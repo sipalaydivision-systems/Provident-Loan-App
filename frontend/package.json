@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Provident Loan Management System - Frontend (React/Next.js)",
   "private": true,
+  "packageManager": "npm@10.8.2",
+  "engines": {
+    "node": ">=20.9.0",
+    "npm": ">=10.8.2"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

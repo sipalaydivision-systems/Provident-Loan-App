@@ -1,0 +1,13 @@
+import * as React from 'react';
+type P = { children?: React.ReactNode; className?: string; [key: string]: any };
+export declare const AlertDialog: React.FC<P>;
+export declare const AlertDialogTrigger: React.FC<P & { asChild?: boolean }>;
+export declare const AlertDialogPortal: React.FC<P>;
+export declare const AlertDialogOverlay: React.FC<P>;
+export declare const AlertDialogContent: React.FC<P>;
+export declare const AlertDialogHeader: React.FC<P>;
+export declare const AlertDialogFooter: React.FC<P>;
+export declare const AlertDialogTitle: React.FC<P>;
+export declare const AlertDialogDescription: React.FC<P>;
+export declare const AlertDialogAction: React.FC<P>;
+export declare const AlertDialogCancel: React.FC<P>;

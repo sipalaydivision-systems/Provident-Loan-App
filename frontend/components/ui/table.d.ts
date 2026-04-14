@@ -1,0 +1,10 @@
+import * as React from 'react';
+type P = { children?: React.ReactNode; className?: string; [key: string]: any };
+export declare const Table: React.FC<P>;
+export declare const TableHeader: React.FC<P>;
+export declare const TableBody: React.FC<P>;
+export declare const TableFooter: React.FC<P>;
+export declare const TableRow: React.FC<P>;
+export declare const TableHead: React.FC<P>;
+export declare const TableCell: React.FC<P>;
+export declare const TableCaption: React.FC<P>;

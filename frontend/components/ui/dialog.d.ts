@@ -1,0 +1,12 @@
+import * as React from 'react';
+type P = { children?: React.ReactNode; className?: string; [key: string]: any };
+export declare const Dialog: React.FC<P>;
+export declare const DialogTrigger: React.FC<P & { asChild?: boolean }>;
+export declare const DialogPortal: React.FC<P>;
+export declare const DialogClose: React.FC<P>;
+export declare const DialogOverlay: React.FC<P>;
+export declare const DialogContent: React.FC<P>;
+export declare const DialogHeader: React.FC<P>;
+export declare const DialogFooter: React.FC<P>;
+export declare const DialogTitle: React.FC<P>;
+export declare const DialogDescription: React.FC<P>;

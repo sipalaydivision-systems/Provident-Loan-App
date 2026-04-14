@@ -1,0 +1,10 @@
+import * as React from 'react';
+type P = { children?: React.ReactNode; className?: string; [key: string]: any };
+export declare const Select: React.FC<P>;
+export declare const SelectGroup: React.FC<P>;
+export declare const SelectValue: React.FC<P>;
+export declare const SelectTrigger: React.FC<P>;
+export declare const SelectContent: React.FC<P>;
+export declare const SelectLabel: React.FC<P>;
+export declare const SelectItem: React.FC<P>;
+export declare const SelectSeparator: React.FC<P>;

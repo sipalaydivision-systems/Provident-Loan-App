@@ -5,6 +5,9 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 
+// Database
+const { initializeDatabase } = require('./database/db');
+
 // Import routes
 const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
@@ -83,10 +86,21 @@ app.use((err, req, res, next) => {
 
 // ==================== Server Start ====================
 
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
-  console.log(`Database: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
-});
+const startServer = async () => {
+  try {
+    await initializeDatabase();
+
+    app.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV}`);
+      console.log(`Database: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
+    });
+  } catch (error) {
+    console.error('Unable to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
 
 module.exports = app;

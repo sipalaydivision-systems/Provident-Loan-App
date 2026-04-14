@@ -1,6 +1,6 @@
 const jwt = require('jsonwebtoken');
 const bcryptjs = require('bcryptjs');
-const mockDB = require('../database/mockdb');
+const db = require('../database/db');
 
 // Generate JWT Token
 const generateToken = (user) => {
@@ -23,8 +23,8 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Find admin in mock database
-    const admin = mockDB.findAdmin(username);
+    // Find admin in database
+    const admin = await db.findAdmin(username);
     
     if (!admin) {
       return res.status(401).json({
@@ -47,7 +47,7 @@ exports.login = async (req, res) => {
     const token = generateToken(admin);
 
     // Log audit
-    mockDB.logAudit(admin.id, 'LOGIN', 'ADMIN_USER', admin.id, null, { username, timestamp: new Date() });
+    await db.logAudit(admin.id, 'LOGIN', 'ADMIN_USER', admin.id, null, { username, timestamp: new Date() });
 
     res.json({
       success: true,

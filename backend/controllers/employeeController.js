@@ -1,7 +1,7 @@
-const mockDB = require('../database/mockdb');
+const db = require('../database/db');
 
 // Search for employee loan data
-exports.search = (req, res) => {
+exports.search = async (req, res) => {
   try {
     const { employee_number, first_name, last_name, search_query } = req.body;
 
@@ -11,10 +11,10 @@ exports.search = (req, res) => {
 
     // Search by employee number
     if (employee_number) {
-      employee = mockDB.findEmployeeByNumber(employee_number);
+      employee = await db.getEmployeeByNumber(employee_number);
       if (employee) {
-        loan = mockDB.findLoanByEmployeeNumber(employee_number);
-        const ledgerCards = mockDB.getLedgerByEmployeeNumber(employee_number);
+        loan = await db.findLoanByEmployeeNumber(employee_number);
+        const ledgerCards = await db.getLedgerByEmployeeNumber(employee_number);
         ledgerSummary = {
           total_months: ledgerCards.length,
           last_payment: ledgerCards[ledgerCards.length - 1] || null
@@ -24,12 +24,12 @@ exports.search = (req, res) => {
     // Search by name
     else if (search_query) {
       const parts = search_query.split(' ');
-      const matches = mockDB.findEmployeesByName(parts[0], parts[1]);
+      const matches = await db.findEmployeesByName(parts[0], parts[1]);
       
       if (matches.length === 1) {
         employee = matches[0];
-        loan = mockDB.findLoanByEmployeeNumber(employee.employee_number);
-        const ledgerCards = mockDB.getLedgerByEmployeeNumber(employee.employee_number);
+        loan = await db.findLoanByEmployeeNumber(employee.employee_number);
+        const ledgerCards = await db.getLedgerByEmployeeNumber(employee.employee_number);
         ledgerSummary = {
           total_months: ledgerCards.length,
           last_payment: ledgerCards[ledgerCards.length - 1] || null
@@ -92,11 +92,11 @@ exports.search = (req, res) => {
 };
 
 // Get employee loan details
-exports.lookup = (req, res) => {
+exports.lookup = async (req, res) => {
   try {
     const { employeeNumber } = req.params;
 
-    const employee = mockDB.findEmployeeByNumber(employeeNumber);
+    const employee = await db.getEmployeeByNumber(employeeNumber);
     
     if (!employee) {
       return res.status(404).json({
@@ -105,8 +105,8 @@ exports.lookup = (req, res) => {
       });
     }
 
-    const loan = mockDB.findLoanByEmployeeNumber(employeeNumber);
-    const ledgerCards = mockDB.getLedgerByEmployeeNumber(employeeNumber);
+    const loan = await db.findLoanByEmployeeNumber(employeeNumber);
+    const ledgerCards = await db.getLedgerByEmployeeNumber(employeeNumber);
 
     res.json({
       success: true,
@@ -141,11 +141,11 @@ exports.lookup = (req, res) => {
 };
 
 // Search by name
-exports.searchByName = (req, res) => {
+exports.searchByName = async (req, res) => {
   try {
     const { first_name, last_name } = req.body;
 
-    const matches = mockDB.findEmployeesByName(first_name, last_name);
+    const matches = await db.findEmployeesByName(first_name, last_name);
 
     res.json({
       success: true,
@@ -170,11 +170,11 @@ exports.searchByName = (req, res) => {
 };
 
 // Get ledger card
-exports.getLedger = (req, res) => {
+exports.getLedger = async (req, res) => {
   try {
     const { employeeNumber } = req.params;
 
-    const employee = mockDB.findEmployeeByNumber(employeeNumber);
+    const employee = await db.getEmployeeByNumber(employeeNumber);
     
     if (!employee) {
       return res.status(404).json({
@@ -183,8 +183,8 @@ exports.getLedger = (req, res) => {
       });
     }
 
-    const loan = mockDB.findLoanByEmployeeNumber(employeeNumber);
-    const ledgerCards = mockDB.getLedgerByEmployeeNumber(employeeNumber);
+    const loan = await db.findLoanByEmployeeNumber(employeeNumber);
+    const ledgerCards = await db.getLedgerByEmployeeNumber(employeeNumber);
 
     res.json({
       success: true,
@@ -210,12 +210,12 @@ exports.getLedger = (req, res) => {
 };
 
 // Get statement
-exports.getStatement = (req, res) => {
+exports.getStatement = async (req, res) => {
   try {
     const { employeeNumber } = req.params;
     const { format = 'json' } = req.query;
 
-    const employee = mockDB.findEmployeeByNumber(employeeNumber);
+    const employee = await db.getEmployeeByNumber(employeeNumber);
     
     if (!employee) {
       return res.status(404).json({
@@ -224,8 +224,8 @@ exports.getStatement = (req, res) => {
       });
     }
 
-    const loan = mockDB.findLoanByEmployeeNumber(employeeNumber);
-    const ledgerCards = mockDB.getLedgerByEmployeeNumber(employeeNumber);
+    const loan = await db.findLoanByEmployeeNumber(employeeNumber);
+    const ledgerCards = await db.getLedgerByEmployeeNumber(employeeNumber);
 
     const statement = {
       employee_number: employeeNumber,

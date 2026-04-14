@@ -1,14 +1,15 @@
-const mockdb = require('../database/mockdb');
+const db = require('../database/db');
 
 /**
  * Build the joined loan-summary rows used by both the JSON and CSV endpoints.
  * Each row matches the spreadsheet columns exactly.
  */
-function buildReportRows() {
+async function buildReportRows() {
   const rows = [];
+  const employees = await db.getAllEmployees();
 
-  mockdb.employees.forEach((emp) => {
-    const loan = mockdb.loans.find((l) => l.employee_number === emp.employee_number);
+  for (const emp of employees) {
+    const loan = await db.findLoanByEmployeeNumber(emp.employee_number);
 
     const fullName = [emp.last_name, emp.first_name, emp.middle_name]
       .filter(Boolean)
@@ -36,7 +37,7 @@ function buildReportRows() {
       remarks: loan?.remarks || '',
       notes: emp.position || '',
     });
-  });
+  }
 
   // Sort: active/qualified first, discharges (fully_paid / no loan) last
   rows.sort((a, b) => {
@@ -65,9 +66,9 @@ function formatDate(d) {
  * GET /api/admin/report/loan-summary
  * Returns the report rows as JSON.
  */
-exports.getLoanSummary = (req, res) => {
+exports.getLoanSummary = async (req, res) => {
   try {
-    const rows = buildReportRows();
+    const rows = await buildReportRows();
     res.json({ success: true, data: rows, total: rows.length });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -78,9 +79,9 @@ exports.getLoanSummary = (req, res) => {
  * GET /api/admin/report/loan-summary/csv
  * Streams a CSV file matching the Provident Loan Fund spreadsheet layout.
  */
-exports.exportLoanSummaryCsv = (req, res) => {
+exports.exportLoanSummaryCsv = async (req, res) => {
   try {
-    const rows = buildReportRows();
+    const rows = await buildReportRows();
 
     const headers = [
       '#',

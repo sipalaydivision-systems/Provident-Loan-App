@@ -1,4 +1,4 @@
-const mockdb = require('../database/mockdb');
+const db = require('../database/db');
 
 /**
  * ADMIN CONTROLLER - Employee and Loan Management
@@ -11,35 +11,19 @@ const mockdb = require('../database/mockdb');
  * GET /api/admin/employees - Get all employees
  * Query params: page, limit, position, station, status
  */
-exports.getAllEmployees = (req, res) => {
+exports.getAllEmployees = async (req, res) => {
   try {
     const { page = 1, limit = 10, position, station, status } = req.query;
-    
-    let employees = [...mockdb.employees];
-    
-    // Apply filters
-    if (position) {
-      employees = employees.filter(e => e.position === position);
-    }
-    if (station) {
-      employees = employees.filter(e => e.station === station);
-    }
-    if (status) {
-      employees = employees.filter(e => e.status === status);
-    }
-    
-    // Paginate
-    const startIdx = (parseInt(page) - 1) * parseInt(limit);
-    const paginatedEmployees = employees.slice(startIdx, startIdx + parseInt(limit));
-    
+    const { count, rows } = await db.getEmployees({ page, limit, position, station, status });
+
     res.json({
       success: true,
-      data: paginatedEmployees,
+      data: rows,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: employees.length,
-        totalPages: Math.ceil(employees.length / parseInt(limit))
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit, 10))
       },
       timestamp: new Date()
     });
@@ -55,18 +39,18 @@ exports.getAllEmployees = (req, res) => {
 /**
  * GET /api/admin/employees/:employeeNumber - Get single employee
  */
-exports.getEmployee = (req, res) => {
+exports.getEmployee = async (req, res) => {
   try {
     const { employeeNumber } = req.params;
-    const employee = mockdb.employees.find(e => e.employee_number === employeeNumber);
-    
+    const employee = await db.getEmployeeByNumber(employeeNumber);
+
     if (!employee) {
       return res.status(404).json({
         success: false,
         error: 'Employee not found'
       });
     }
-    
+
     res.json({
       success: true,
       data: employee,
@@ -84,7 +68,7 @@ exports.getEmployee = (req, res) => {
 /**
  * POST /api/admin/employees - Create new employee
  */
-exports.createEmployee = (req, res) => {
+exports.createEmployee = async (req, res) => {
   try {
     const {
       employee_number,
@@ -104,16 +88,15 @@ exports.createEmployee = (req, res) => {
       });
     }
     
-    // Check if employee already exists
-    if (mockdb.employees.some(e => e.employee_number === employee_number)) {
+    const existingEmployee = await db.getEmployeeByNumber(employee_number);
+    if (existingEmployee) {
       return res.status(409).json({
         success: false,
         error: 'Employee with this number already exists'
       });
     }
-    
-    const newEmployee = {
-      id: Math.max(...mockdb.employees.map(e => e.id), 0) + 1,
+
+    const newEmployee = await db.createEmployee({
       employee_number,
       first_name: first_name.toUpperCase(),
       last_name: last_name.toUpperCase(),
@@ -122,13 +105,9 @@ exports.createEmployee = (req, res) => {
       email,
       phone,
       status: 'active',
-      date_hired: new Date(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    mockdb.employees.push(newEmployee);
-    
+      date_hired: new Date()
+    });
+
     res.status(201).json({
       success: true,
       data: newEmployee,
@@ -147,28 +126,20 @@ exports.createEmployee = (req, res) => {
 /**
  * PUT /api/admin/employees/:employeeNumber - Update employee
  */
-exports.updateEmployee = (req, res) => {
+exports.updateEmployee = async (req, res) => {
   try {
     const { employeeNumber } = req.params;
     const updates = req.body;
     
-    const employee = mockdb.employees.find(e => e.employee_number === employeeNumber);
-    
+    const employee = await db.updateEmployee(employeeNumber, updates);
+
     if (!employee) {
       return res.status(404).json({
         success: false,
         error: 'Employee not found'
       });
     }
-    
-    // Update fields
-    Object.keys(updates).forEach(key => {
-      if (key !== 'id' && key !== 'employee_number' && key !== 'created_at') {
-        employee[key] = updates[key];
-      }
-    });
-    employee.updated_at = new Date().toISOString();
-    
+
     res.json({
       success: true,
       data: employee,
@@ -187,23 +158,21 @@ exports.updateEmployee = (req, res) => {
 /**
  * DELETE /api/admin/employees/:employeeNumber - Delete employee
  */
-exports.deleteEmployee = (req, res) => {
+exports.deleteEmployee = async (req, res) => {
   try {
     const { employeeNumber } = req.params;
-    const index = mockdb.employees.findIndex(e => e.employee_number === employeeNumber);
-    
-    if (index === -1) {
+    const deleted = await db.deleteEmployee(employeeNumber);
+
+    if (!deleted) {
       return res.status(404).json({
         success: false,
         error: 'Employee not found'
       });
     }
-    
-    const deleted = mockdb.employees.splice(index, 1);
-    
+
     res.json({
       success: true,
-      data: deleted[0],
+      data: deleted,
       message: 'Employee deleted successfully',
       timestamp: new Date()
     });
@@ -222,32 +191,19 @@ exports.deleteEmployee = (req, res) => {
  * GET /api/admin/loans - Get all loans
  * Query params: page, limit, status, employee_number
  */
-exports.getAllLoans = (req, res) => {
+exports.getAllLoans = async (req, res) => {
   try {
     const { page = 1, limit = 10, status, employee_number } = req.query;
-    
-    let loans = [...mockdb.loans];
-    
-    // Apply filters
-    if (status) {
-      loans = loans.filter(l => l.status === status);
-    }
-    if (employee_number) {
-      loans = loans.filter(l => l.employee_number === employee_number);
-    }
-    
-    // Paginate
-    const startIdx = (parseInt(page) - 1) * parseInt(limit);
-    const paginatedLoans = loans.slice(startIdx, startIdx + parseInt(limit));
-    
+    const { count, rows } = await db.getLoans({ page, limit, status, employee_number });
+
     res.json({
       success: true,
-      data: paginatedLoans,
+      data: rows,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: loans.length,
-        totalPages: Math.ceil(loans.length / parseInt(limit))
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit, 10))
       },
       timestamp: new Date()
     });
@@ -263,18 +219,18 @@ exports.getAllLoans = (req, res) => {
 /**
  * GET /api/admin/loans/:loanId - Get single loan
  */
-exports.getLoan = (req, res) => {
+exports.getLoan = async (req, res) => {
   try {
     const { loanId } = req.params;
-    const loan = mockdb.loans.find(l => l.id === parseInt(loanId));
-    
+    const loan = await db.getLoanById(parseInt(loanId, 10));
+
     if (!loan) {
       return res.status(404).json({
         success: false,
         error: 'Loan not found'
       });
     }
-    
+
     res.json({
       success: true,
       data: loan,
@@ -292,56 +248,35 @@ exports.getLoan = (req, res) => {
 /**
  * POST /api/admin/loans - Create new loan
  */
-exports.createLoan = (req, res) => {
+exports.createLoan = async (req, res) => {
   try {
     const {
       employee_number,
       loan_amount,
       no_of_months,
       interest_rate = 2.0,
-      effective_date = new Date(),
-      reason
+      effective_date,
+      reason,
+      approved_by
     } = req.body;
-    
-    // Validate required fields
+
     if (!employee_number || !loan_amount || !no_of_months) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: employee_number, loan_amount, no_of_months'
       });
     }
-    
-    // Check if employee exists
-    const employee = mockdb.employees.find(e => e.employee_number === employee_number);
-    if (!employee) {
-      return res.status(404).json({
-        success: false,
-        error: 'Employee not found'
-      });
-    }
-    
-    const monthly_amortization = (loan_amount / no_of_months).toFixed(2);
-    
-    const newLoan = {
-      id: Math.max(...mockdb.loans.map(l => l.id), 0) + 1,
+
+    const newLoan = await db.createLoan({
       employee_number,
-      loan_amount: parseFloat(loan_amount),
-      loan_balance: parseFloat(loan_amount),
-      monthly_amortization: parseFloat(monthly_amortization),
-      no_of_months: parseInt(no_of_months),
-      no_of_months_paid: 0,
-      interest_rate: parseFloat(interest_rate),
-      effective_date: new Date(effective_date),
-      termination_date: null,
-      status: 'active',
-      reason: reason || 'Personal needs',
-      approved_by: 'System Admin',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-    
-    mockdb.loans.push(newLoan);
-    
+      loan_amount,
+      no_of_months,
+      interest_rate,
+      effective_date,
+      reason,
+      approved_by
+    });
+
     res.status(201).json({
       success: true,
       data: newLoan,
@@ -360,28 +295,20 @@ exports.createLoan = (req, res) => {
 /**
  * PUT /api/admin/loans/:loanId - Update loan
  */
-exports.updateLoan = (req, res) => {
+exports.updateLoan = async (req, res) => {
   try {
     const { loanId } = req.params;
     const updates = req.body;
-    
-    const loan = mockdb.loans.find(l => l.id === parseInt(loanId));
-    
+
+    const loan = await db.updateLoan(parseInt(loanId, 10), updates);
+
     if (!loan) {
       return res.status(404).json({
         success: false,
         error: 'Loan not found'
       });
     }
-    
-    // Update fields
-    Object.keys(updates).forEach(key => {
-      if (key !== 'id' && key !== 'employee_number' && key !== 'created_at') {
-        loan[key] = updates[key];
-      }
-    });
-    loan.updated_at = new Date().toISOString();
-    
+
     res.json({
       success: true,
       data: loan,
@@ -400,23 +327,21 @@ exports.updateLoan = (req, res) => {
 /**
  * DELETE /api/admin/loans/:loanId - Delete loan
  */
-exports.deleteLoan = (req, res) => {
+exports.deleteLoan = async (req, res) => {
   try {
     const { loanId } = req.params;
-    const index = mockdb.loans.findIndex(l => l.id === parseInt(loanId));
-    
-    if (index === -1) {
+    const deleted = await db.deleteLoan(parseInt(loanId, 10));
+
+    if (!deleted) {
       return res.status(404).json({
         success: false,
         error: 'Loan not found'
       });
     }
-    
-    const deleted = mockdb.loans.splice(index, 1);
-    
+
     res.json({
       success: true,
-      data: deleted[0],
+      data: deleted,
       message: 'Loan deleted successfully',
       timestamp: new Date()
     });
@@ -435,35 +360,19 @@ exports.deleteLoan = (req, res) => {
  * GET /api/admin/ledger - Get all ledger entries
  * Query params: page, limit, employee_number, month, year
  */
-exports.getAllLedgerEntries = (req, res) => {
+exports.getAllLedgerEntries = async (req, res) => {
   try {
     const { page = 1, limit = 20, employee_number, month, year } = req.query;
-    
-    let entries = [...mockdb.ledger];
-    
-    // Apply filters
-    if (employee_number) {
-      entries = entries.filter(e => e.employee_number === employee_number);
-    }
-    if (month && year) {
-      entries = entries.filter(e => {
-        const entryDate = new Date(e.date_of_deduction || e.payment_date);
-        return entryDate.getMonth() + 1 === parseInt(month) && entryDate.getFullYear() === parseInt(year);
-      });
-    }
-    
-    // Paginate
-    const startIdx = (parseInt(page) - 1) * parseInt(limit);
-    const paginatedEntries = entries.slice(startIdx, startIdx + parseInt(limit));
-    
+    const { count, rows } = await db.getLedgerEntries({ page, limit, employee_number, month, year });
+
     res.json({
       success: true,
-      data: paginatedEntries,
+      data: rows,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total: entries.length,
-        totalPages: Math.ceil(entries.length / parseInt(limit))
+        page: parseInt(page, 10),
+        limit: parseInt(limit, 10),
+        total: count,
+        totalPages: Math.ceil(count / parseInt(limit, 10))
       },
       timestamp: new Date()
     });
@@ -479,68 +388,38 @@ exports.getAllLedgerEntries = (req, res) => {
 /**
  * POST /api/admin/ledger/record-payment - Record payment
  */
-exports.recordPayment = (req, res) => {
+exports.recordPayment = async (req, res) => {
   try {
     const {
       employee_number,
       loan_id,
       amount_paid,
-      payment_date = new Date(),
+      payment_date,
       reference_number,
       notes
     } = req.body;
-    
-    // Validate required fields
+
     if (!employee_number || !loan_id || !amount_paid) {
       return res.status(400).json({
         success: false,
         error: 'Missing required fields: employee_number, loan_id, amount_paid'
       });
     }
-    
-    // Find the loan
-    const loan = mockdb.loans.find(l => l.id === parseInt(loan_id));
-    if (!loan) {
-      return res.status(404).json({
-        success: false,
-        error: 'Loan not found'
-      });
-    }
-    
-    // Update loan balance
-    const previousBalance = loan.loan_balance;
-    loan.loan_balance = Math.max(0, loan.loan_balance - parseFloat(amount_paid));
-    loan.no_of_months_paid += 1;
-    
-    // Check if loan is fully paid
-    if (loan.loan_balance <= 0) {
-      loan.status = 'fully_paid';
-      loan.termination_date = new Date();
-      loan.loan_balance = 0;
-    }
-    
-    // Create ledger entry
-    const newEntry = {
-      id: Math.max(...mockdb.ledger.map(e => e.id), 0) + 1,
+
+    const { ledgerEntry, updatedLoan } = await db.recordPayment({
       employee_number,
-      loan_id: parseInt(loan_id),
-      payment_date: new Date(payment_date),
-      amount_paid: parseFloat(amount_paid),
-      previous_balance: parseFloat(previousBalance),
-      new_balance: loan.loan_balance,
-      reference_number: reference_number || `PAY-${Date.now()}`,
-      recorded_by: 'System Admin',
-      notes: notes || '',
-      created_at: new Date().toISOString()
-    };
-    
-    mockdb.ledger.push(newEntry);
-    
+      loan_id: parseInt(loan_id, 10),
+      amount_paid,
+      payment_date,
+      reference_number,
+      notes
+    });
+
     res.status(201).json({
       success: true,
       data: {
-        ledgerEntry: newEntry,
-        updatedLoan: loan
+        ledgerEntry,
+        updatedLoan
       },
       message: 'Payment recorded successfully',
       timestamp: new Date()
@@ -557,40 +436,13 @@ exports.recordPayment = (req, res) => {
 /**
  * GET /api/admin/dashboard/summary - Dashboard summary statistics
  */
-exports.getDashboardSummary = (req, res) => {
+exports.getDashboardSummary = async (req, res) => {
   try {
-    const totalEmployees = mockdb.employees.length;
-    const activeLoans = mockdb.loans.filter(l => {
-      const s = (l.status || '').toUpperCase();
-      return s === 'ACTIVE' || s.includes('QUALIFIED') || s === 'NOT QUALIFIED';
-    }).length;
-    const fullyPaidLoans = mockdb.loans.filter(l => (l.status || '').toUpperCase().includes('FULLY')).length;
-    const totalLoanAmount = mockdb.loans.reduce((sum, l) => sum + l.loan_amount, 0);
-    const totalLoanBalance = mockdb.loans.reduce((sum, l) => sum + l.loan_balance, 0);
-    const totalAmortization = mockdb.loans.reduce((sum, l) => sum + l.monthly_amortization, 0);
-    const totalPaymentsRecorded = mockdb.ledger.reduce((sum, e) => sum + (e.monthly_payment_amount || e.amount_paid || 0), 0);
-    
+    const data = await db.getDashboardSummary();
+
     res.json({
       success: true,
-      data: {
-        employees: {
-          total: totalEmployees,
-          active: mockdb.employees.filter(e => e.status === 'active').length
-        },
-        loans: {
-          total: mockdb.loans.length,
-          active: activeLoans,
-          fullyPaid: fullyPaidLoans,
-          totalAmount: totalLoanAmount,
-          remainingBalance: totalLoanBalance,
-          monthlyAmortization: totalAmortization
-        },
-        payments: {
-          totalRecorded: totalPaymentsRecorded,
-          entriesCount: mockdb.ledger.length,
-          averagePayment: mockdb.ledger.length > 0 ? (totalPaymentsRecorded / mockdb.ledger.length).toFixed(2) : 0
-        }
-      },
+      data,
       timestamp: new Date()
     });
   } catch (error) {

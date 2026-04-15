@@ -39,14 +39,27 @@ const emptyLoan = {
   status: 'ACTIVE', remarks: '', notes: '',
 };
 
-const STATUSES = ['ACTIVE','QUALIFIED FOR RENEWAL','NOT QUALIFIED','FULLY PAID','DECEASED','RESIGNED','RETIRED'];
+const STATUSES = [
+  'ACTIVE',
+  'QUALIFIED FOR RENEWAL',
+  'NOT QUALIFIED FOR RENEWAL',
+  'NOT QUALIFIED',
+  'FULLY PAID',
+  'NO LOAN',
+  'DECEASED',
+  'RESIGNED',
+  'RETIRED',
+];
 
 function statusColor(s: string) {
   const u = (s || '').toUpperCase();
   if (u === 'ACTIVE') return 'bg-green-100 text-green-700';
-  if (u.includes('QUALIFIED') && !u.includes('NOT')) return 'bg-blue-100 text-blue-700';
-  if (u.includes('NOT')) return 'bg-red-100 text-red-700';
-  if (u.includes('FULLY') || u.includes('PAID')) return 'bg-slate-100 text-slate-600';
+  if (u === 'QUALIFIED FOR RENEWAL') return 'bg-blue-100 text-blue-700';
+  if (u === 'NOT QUALIFIED FOR RENEWAL' || u === 'NOT QUALIFIED') return 'bg-red-100 text-red-700';
+  if (u === 'FULLY PAID') return 'bg-slate-100 text-slate-600';
+  if (u === 'NO LOAN') return 'bg-gray-100 text-gray-500';
+  if (u === 'DECEASED') return 'bg-gray-800 text-white';
+  if (u === 'RESIGNED' || u === 'RETIRED') return 'bg-orange-100 text-orange-700';
   return 'bg-yellow-100 text-yellow-700';
 }
 

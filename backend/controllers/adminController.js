@@ -30,12 +30,50 @@ function parseCSVText(content) {
   return rows;
 }
 
+const MONTH_NAMES = {
+  jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12,
+  january:1,february:2,march:3,april:4,june:6,july:7,august:8,
+  september:9,october:10,november:11,december:12
+};
+
 function parseDate(str) {
   if (!str || !str.trim()) return null;
-  const s = str.trim();
+  const s = String(str).trim();
   // MM/DD/YYYY
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) return new Date(`${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`);
+  // M/D/YYYY (no leading zero)
+  m = s.match(/^(\d{1,2})\/(\d{1,4})$/);
+  if (m && parseInt(m[2]) > 31) {
+    // M/YYYY
+    return new Date(`${m[2]}-${m[1].padStart(2,'0')}-01`);
+  }
+  // "June 2025" or "October 2023" or "Jun 2023"
+  m = s.match(/^([A-Za-z]+)\.?\s+(\d{4})$/);
+  if (m) {
+    const mo = MONTH_NAMES[(m[1].toLowerCase().replace(/\.$/, ''))];
+    if (mo) return new Date(`${m[2]}-${String(mo).padStart(2,'0')}-01`);
+  }
+  // "Oct.23" → October 2023 (2-digit year)
+  m = s.match(/^([A-Za-z]+)\.(\d{2})$/);
+  if (m) {
+    const mo = MONTH_NAMES[m[1].toLowerCase()];
+    if (mo) {
+      const yr = parseInt(m[2]) + 2000;
+      return new Date(`${yr}-${String(mo).padStart(2,'0')}-01`);
+    }
+  }
+  // "May 08,2025" style
+  m = s.match(/^([A-Za-z]+)\.?\s+(\d{1,2}),\s*(\d{4})$/);
+  if (m) {
+    const mo = MONTH_NAMES[m[1].toLowerCase()];
+    if (mo) return new Date(`${m[3]}-${String(mo).padStart(2,'0')}-${m[2].padStart(2,'0')}`);
+  }
+  // Loan app number like "2025-04-011" → use year-month
+  m = s.match(/^(\d{4})-(\d{2})-\d+$/);
+  if (m) return new Date(`${m[1]}-${m[2]}-01`);
+  m = s.match(/^(\d{4})-\d+$/);
+  if (m) return new Date(`${m[1]}-01-01`);
   const d = new Date(s);
   return isNaN(d) ? null : d;
 }
@@ -325,6 +363,10 @@ function rowsFromCSV(csvRows) {
     const noMonthsPaid = parseNum(col(row, 'no. of months paid', 'no_of_months_paid', 'months paid')) ?? 0;
     const loanBal = parseNum(col(row, 'loan balance', 'loan_balance'));
 
+    const rawStatus = col(row, 'status') || 'active';
+    // Skip deceased employees during import
+    if (/deceased/i.test(rawStatus)) continue;
+
     results.push({
       employee_number: empNum,
       last_name,
@@ -341,9 +383,104 @@ function rowsFromCSV(csvRows) {
       monthly_amortization: monthlyAmort,
       no_of_months_paid: noMonthsPaid,
       loan_balance: loanBal,
-      status: col(row, 'status') || 'active',
+      status: rawStatus,
       remarks: col(row, 'remarks') || '',
       position: col(row, 'notes', 'position') || '',
+    });
+  }
+  return results;
+}
+
+/**
+ * Parse the Provident Fund .xlsx file format.
+ *
+ * File layout:
+ *   Row 0: Title row  ["", "", "PROVIDENT LOAN FUND", ...]   ← skip
+ *   Row 1: Header row ["No.", "Station", "Employee Number", "Name of Employee",
+ *                      "Loan Application Number", "Check No:", "Check Date",
+ *                      "LEDGER", "Loan Amount", "No. of Months",
+ *                      "Monthly Amortization", "Effective Date",
+ *                      "Termination Date", "No. of Month Paid ",
+ *                      "No. of Month Balance ", "Loan Balance",
+ *                      "Status", "REMARKS", "Notes"]
+ *   Row 2+: Data rows
+ *
+ * Name format in the file: "FIRSTNAME [MI.] LASTNAME"  (not "Last, First")
+ * Dates may be Excel serial numbers (raw) or formatted strings.
+ * DECEASED employees are skipped on import.
+ */
+function rowsFromProvidentXLSX(rawRows) {
+  // Find the header row — it's the first row containing "Employee Number"
+  let headerRowIdx = -1;
+  for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
+    if (rawRows[i].some(c => /employee\s*number/i.test(String(c)))) {
+      headerRowIdx = i;
+      break;
+    }
+  }
+  if (headerRowIdx === -1 || headerRowIdx + 1 >= rawRows.length) return [];
+
+  const headers = rawRows[headerRowIdx].map(h => String(h || '').toLowerCase().trim());
+
+  const col = (row, ...names) => {
+    for (const name of names) {
+      const idx = headers.findIndex(h => h.includes(name));
+      if (idx !== -1) return row[idx] != null ? String(row[idx]) : '';
+    }
+    return '';
+  };
+
+  const results = [];
+
+  for (let i = headerRowIdx + 1; i < rawRows.length; i++) {
+    const row = rawRows[i];
+    if (!row || row.length < 3) continue;
+
+    const empNum = col(row, 'employee number', 'employee_number', 'emp no').trim();
+    if (!empNum || !/^\d{5,10}$/.test(empNum)) continue;
+
+    // Skip DECEASED employees
+    const rawStatus = col(row, 'status').trim();
+    if (/deceased/i.test(rawStatus)) continue;
+
+    // Name is in "FIRSTNAME [MI.] LASTNAME" format
+    const rawName = col(row, 'name of employee', 'name').trim();
+    if (!rawName) continue;
+    const { first_name, middle_name, last_name } = parsePersonName(rawName);
+    if (!last_name || !first_name) continue;
+
+    const loanAmt    = parseNum(col(row, 'loan amount'));
+    const noOfMonths = parseNum(col(row, 'no. of months', 'no of months'));
+    const monthlyAmort = parseNum(col(row, 'monthly amortization'));
+    const noMonthsPaid = parseNum(col(row, 'no. of month paid', 'months paid', 'no of month paid')) ?? 0;
+    const loanBal = parseNum(col(row, 'loan balance'));
+
+    // Dates may come as formatted strings or Excel serials converted to strings
+    const effectiveDateRaw    = col(row, 'effective date').trim();
+    const terminationDateRaw  = col(row, 'termination date').trim();
+    const checkDateRaw        = col(row, 'check date').trim();
+    const loanAppNumRaw       = col(row, 'loan application number', 'loan application').trim();
+
+    results.push({
+      employee_number:      empNum,
+      first_name:           first_name.toUpperCase(),
+      middle_name:          middle_name ? middle_name.toUpperCase() : null,
+      last_name:            last_name.toUpperCase(),
+      station:              col(row, 'station').trim() || 'Unknown',
+      loan_application_date: loanAppNumRaw ? parseDate(loanAppNumRaw) : null,
+      check_number:         col(row, 'check no').trim() || null,
+      check_date:           checkDateRaw ? parseDate(checkDateRaw) : null,
+      effective_date:       effectiveDateRaw ? parseDate(effectiveDateRaw) : null,
+      termination_date:     terminationDateRaw ? parseDate(terminationDateRaw) : null,
+      loan_amount:          loanAmt,
+      no_of_months:         noOfMonths,
+      monthly_amortization: monthlyAmort,
+      no_of_months_paid:    noMonthsPaid,
+      loan_balance:         loanBal,
+      status:               rawStatus || 'QUALIFIED FOR RENEWAL',
+      remarks:              col(row, 'remarks').trim() || '',
+      notes:                col(row, 'notes').trim() || '',
+      employee_status:      'active',
     });
   }
   return results;
@@ -914,11 +1051,16 @@ exports.importEmployees = async (req, res) => {
       rawText = data.text;
       parsedRows = parsePDFText(rawText);
     } else if (isXLSX && !isCSV) {
-      const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+      const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: false });
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-      parsedRows = rowsFromCSV(jsonRows.map(r => r.map(c => c === null || c === undefined ? '' : String(c))));
+      // Use raw:false so dates/numbers come as formatted strings
+      const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false });
+      parsedRows = rowsFromProvidentXLSX(jsonRows);
+      // Fall back to generic CSV parser if the dedicated parser yields nothing
+      if (parsedRows.length === 0) {
+        parsedRows = rowsFromCSV(jsonRows.map(r => r.map(c => c === null || c === undefined ? '' : String(c))));
+      }
     } else {
       const content = req.file.buffer.toString('utf8');
       rawText = content;

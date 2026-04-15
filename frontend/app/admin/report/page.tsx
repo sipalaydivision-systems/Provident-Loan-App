@@ -35,12 +35,14 @@ const peso = (v: number | string) =>
 
 function statusStyle(status: string): string {
   const s = (status || '').toUpperCase();
-  if (s.includes('QUALIFIED')) return 'bg-green-600 text-white';
   if (s === 'ACTIVE') return 'bg-green-500 text-white';
-  if (s.includes('FULLY') || s.includes('PAID')) return 'bg-blue-600 text-white';
-  if (s.includes('RENEW')) return 'bg-yellow-500 text-black';
+  if (s === 'QUALIFIED FOR RENEWAL') return 'bg-blue-600 text-white';
+  if (s === 'NOT QUALIFIED FOR RENEWAL' || s === 'NOT QUALIFIED') return 'bg-red-600 text-white';
+  if (s.includes('FULLY') || s.includes('PAID')) return 'bg-slate-500 text-white';
   if (s === 'NO LOAN') return 'bg-gray-400 text-white';
-  return 'bg-red-600 text-white';
+  if (s === 'DECEASED') return 'bg-gray-800 text-white';
+  if (s === 'RESIGNED' || s === 'RETIRED') return 'bg-orange-500 text-white';
+  return 'bg-yellow-500 text-black';
 }
 
 // ── component ──────────────────────────────────────────────────────────────
@@ -93,17 +95,12 @@ export default function LoanSummaryReport() {
   }, [rows, search]);
 
   // ── split into sections ─────────────────────────────────────────────────
+  const DISCHARGED_STATUSES = ['FULLY PAID', 'NO LOAN', 'DECEASED', 'RESIGNED', 'RETIRED'];
   const activeRows = filtered.filter(
-    (r) =>
-      r.status &&
-      !r.status.toUpperCase().includes('FULLY') &&
-      r.status !== 'NO LOAN'
+    (r) => r.status && !DISCHARGED_STATUSES.includes(r.status.toUpperCase())
   );
   const dischargedRows = filtered.filter(
-    (r) =>
-      !r.status ||
-      r.status.toUpperCase().includes('FULLY') ||
-      r.status === 'NO LOAN'
+    (r) => !r.status || DISCHARGED_STATUSES.includes((r.status || '').toUpperCase())
   );
 
   // ── totals ──────────────────────────────────────────────────────────────

@@ -678,20 +678,25 @@ exports.importEmployees = async (req, res) => {
     }
 
     let parsedRows = [];
+    let rawText = '';
 
     if (isPDF) {
       const data = await pdfParse(req.file.buffer);
-      parsedRows = parsePDFText(data.text);
+      rawText = data.text;
+      parsedRows = parsePDFText(rawText);
     } else {
       const content = req.file.buffer.toString('utf8');
+      rawText = content;
       const csvRows = parseCSVText(content);
       parsedRows = rowsFromCSV(csvRows);
     }
 
     if (parsedRows.length === 0) {
+      // Return first 3000 chars of raw text so the format can be diagnosed
       return res.status(400).json({
         success: false,
-        error: 'No employee data found in the file. Make sure the file follows the Provident Loan Summary format.'
+        error: 'No employee data found in the file. Make sure the file follows the Provident Loan Summary format.',
+        debug_raw_text: rawText.substring(0, 3000),
       });
     }
 

@@ -348,6 +348,29 @@ const recordPayment = async ({ employee_number, loan_id, amount_paid, payment_da
   return { ledgerEntry, updatedLoan };
 };
 
+// Direct loan insert that preserves all values from an import (no recalculation)
+const createLoanDirect = async (payload) => {
+  const loanAmount = parseFloat(payload.loan_amount) || 0;
+  return Loan.create({
+    employee_number: payload.employee_number,
+    loan_amount: loanAmount,
+    no_of_months: parseInt(payload.no_of_months) || 0,
+    monthly_amortization: parseFloat(payload.monthly_amortization) || parseFloat((loanAmount / (parseInt(payload.no_of_months) || 1)).toFixed(2)),
+    loan_application_date: payload.loan_application_date || null,
+    check_number: payload.check_number || null,
+    check_date: payload.check_date || null,
+    effective_date: payload.effective_date || null,
+    termination_date: payload.termination_date || null,
+    loan_balance: parseFloat(payload.loan_balance) ?? loanAmount,
+    no_of_months_paid: parseInt(payload.no_of_months_paid) || 0,
+    status: payload.status || 'active',
+    remarks: payload.remarks || null,
+    reason: 'Imported from summary',
+    approved_by: 'Import',
+    interest_rate: 0,
+  });
+};
+
 const findLoanByEmployeeNumber = async (employee_number) => {
   return Loan.findOne({
     where: { employee_number },
@@ -432,6 +455,7 @@ module.exports = {
   deleteLoan,
   getLedgerEntries,
   recordPayment,
+  createLoanDirect,
   findLoanByEmployeeNumber,
   getLedgerByEmployeeNumber,
   findEmployeesByName,

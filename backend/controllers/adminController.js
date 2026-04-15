@@ -78,18 +78,24 @@ function parsePersonName(fullName) {
 
 /**
  * Parse extracted PDF text into employee/loan row objects.
- * Built for the Provident Loan Fund table layout:
- *   [No] [Station] [EmpNo] [Name] [LoanAppNo] [CheckNo] [CheckDate] [LEDGER marker]
- *   [LoanAmt] [Months] [MonthlyAmort] [EffDate] [TermDate] [MonthsPaid] [MonthBal]
- *   [LoanBalance] [Rate] [Status] [Remarks] [Notes]
+ *
+ * PDF column order (Provident Loan Fund Summary):
+ *   [No] [Station] [EmpNo] [Name] [LoanAppNo] [CheckNo] [CheckDate] | LEDGER MARKER |
+ *   [LoanAmt] [NoOfMonths] [MonthlyAmort] [EffectiveDate] [TerminationDate]
+ *   [NoOfMonthsPaid] [LoanBalance] [Status] [Remarks]
+ *
+ * Database mapping:
+ *   employees  → employee_number, station, first_name, middle_name, last_name
+ *   loans      → loan_amount, no_of_months, monthly_amortization, loan_application_date,
+ *                check_number, check_date, effective_date, termination_date,
+ *                no_of_months_paid, loan_balance, status, remarks
+ *   ledger     → created automatically from no_of_months_paid × monthly_amortization
  */
 function parsePDFText(rawText) {
-  // Normalize line endings
   const lines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
     .split('\n').map(l => l.trim()).filter(Boolean);
   const results = [];
 
-  // Known header / non-data lines to skip
   const SKIP = [
     /^PROVIDENT LOAN FUND/i,
     /^No\s+Station/i,
@@ -100,22 +106,22 @@ function parsePDFText(rawText) {
     /^Name\s+of\s+Employee/i,
   ];
 
-  // The LEDGER column always contains one of these strings
-  const LEDGER_MARKERS = ['PROVIDENT FUND - Google Sheets', 'PROVIDENT FUND- Google Sheets', 'LEDGER'];
-
-  // Monetary amount pattern: 1,000.00 or 100,000.00
-  const AMOUNT_RE = /\b(\d{1,3}(?:,\d{3})*\.\d{2})\b/g;
+  const LEDGER_MARKERS = [
+    'PROVIDENT FUND - Google Sheets',
+    'PROVIDENT FUND- Google Sheets',
+    'LEDGER',
+  ];
 
   for (const line of lines) {
     if (SKIP.some(p => p.test(line))) continue;
     if (line.length < 15) continue;
 
-    // --- Step 1: must start with a row number ---
+    // ── Step 1: row must start with a row number ──────────────────────────
     const rowMatch = line.match(/^(\d{1,3})\s+/);
     if (!rowMatch) continue;
     const afterRowNum = line.substring(rowMatch[0].length).trim();
 
-    // --- Step 2: find the LEDGER marker to split the line ---
+    // ── Step 2: locate the LEDGER marker ─────────────────────────────────
     let ledgerIdx = -1;
     let ledgerMarkerLen = 0;
     for (const marker of LEDGER_MARKERS) {
@@ -123,20 +129,20 @@ function parsePDFText(rawText) {
       if (idx !== -1) { ledgerIdx = idx; ledgerMarkerLen = marker.length; break; }
     }
 
-    // --- Step 3: extract employee number (5–8 consecutive digits) ---
+    // ── Step 3: employee number (5–8 consecutive digits) ──────────────────
     const empMatch = afterRowNum.match(/\b(\d{5,8})\b/);
     if (!empMatch) continue;
     const empNo = empMatch[1];
     const empIdx = afterRowNum.indexOf(empNo);
 
     // Station = text between row number and employee number
-    const stationRaw = afterRowNum.substring(0, empIdx).trim()
+    const stationRaw = afterRowNum.substring(0, empIdx)
       .replace(/\(DECEASED\)/gi, '').trim();
     const station = stationRaw || 'Unknown';
 
-    // --- Step 4: extract full name ---
-    // Name is between employee number and loan application number (YYYY-NNN or YYYY-MM-NNN)
+    // ── Step 4: name and loan application number ──────────────────────────
     const afterEmpNo = afterRowNum.substring(empIdx + empNo.length).trim();
+    // Loan application number: YYYY-MM-NNN  or  YYYY-NNN
     const loanAppMatch = afterEmpNo.match(/\b(\d{4}-(?:\d{2}-\d{3,4}|\d{3,4}))\b/);
 
     let fullName = '';
@@ -147,10 +153,11 @@ function parsePDFText(rawText) {
       fullName = afterEmpNo.substring(0, laidx).trim();
       afterName = afterEmpNo.substring(laidx);
     } else if (ledgerIdx !== -1) {
-      // Fall back: name is everything before the ledger marker (minus station/empno already consumed)
       const beforeLedger = afterRowNum.substring(empIdx + empNo.length, ledgerIdx).trim();
-      // Remove check no (6-digit) and check date from end
-      fullName = beforeLedger.replace(/\b\d{6}\b.*$/, '').replace(/\b\d{2}[-\/]\d{2}[-\/]\d{4}\b.*$/, '').trim();
+      fullName = beforeLedger
+        .replace(/\b\d{6}\b.*$/, '')
+        .replace(/\b\d{1,2}[-\/]\d{2}[-\/]\d{4}\b.*$/, '')
+        .trim();
     }
 
     fullName = fullName.replace(/\s+/g, ' ').trim();
@@ -159,81 +166,130 @@ function parsePDFText(rawText) {
     const { first_name, middle_name, last_name } = parsePersonName(fullName);
     if (!last_name) continue;
 
-    // --- Step 5: parse structured data after LEDGER marker ---
+    // ── Step 5: derive loan_application_date from loan app number ─────────
+    // e.g.  "2023-07-001"  →  loan_application_date = "07/01/2023"
+    //        "2023-001"    →  loan_application_date = "01/01/2023"
+    let loanApplicationDate = null;
+    if (loanAppMatch) {
+      const parts = loanAppMatch[1].split('-');
+      const year = parts[0];
+      const month = parts.length >= 3 && parts[1].length === 2 ? parts[1] : '01';
+      loanApplicationDate = `${month}/01/${year}`;
+    }
+
+    // ── Step 6: check number and check date (before LEDGER marker) ────────
+    // Check number: 6-digit standalone number in afterName before the LEDGER portion
+    const preMarker = ledgerIdx !== -1
+      ? afterName.substring(0, afterName.indexOf(LEDGER_MARKERS.find(m => afterName.includes(m)) || '') || afterName.length)
+      : afterName;
+
+    const checkNoMatch = preMarker.match(/\b(\d{6})\b/);
+    const checkNo = checkNoMatch ? checkNoMatch[1] : null;
+
+    // Check date: MM/DD/YYYY or MM-DD-YYYY before LEDGER marker
+    const checkDateMatch = preMarker.match(/\b(\d{1,2}[-\/]\d{2}[-\/]\d{4})\b/);
+    const checkDate = checkDateMatch ? checkDateMatch[1].replace(/-/g, '/') : null;
+
+    // ── Step 7: parse columns after LEDGER marker ─────────────────────────
     let loanAmount = null, noOfMonths = null, monthlyAmort = null;
     let loanBalance = null, noOfMonthsPaid = 0;
-    let checkNo = null, checkDate = null;
-
-    // Check number: 6-digit number after loan app number
-    const checkNoMatch = afterName.match(/\b(\d{6})\b/);
-    if (checkNoMatch) checkNo = checkNoMatch[1];
-
-    // Check date: MM-DD-YYYY or M/DD/YYYY before the ledger marker
-    const checkDateMatch = afterName.match(/\b(\d{1,2}[-\/]\d{2}[-\/]\d{4})\b/);
-    if (checkDateMatch) checkDate = checkDateMatch[1].replace(/-/g, '/');
+    let effectiveDate = null, terminationDate = null;
 
     if (ledgerIdx !== -1) {
       const afterLedger = afterRowNum.substring(ledgerIdx + ledgerMarkerLen).trim();
 
-      // Collect all monetary amounts in order
+      // --- Monetary amounts (comma-formatted, 2 decimal places) ---
+      // Order in PDF:  LoanAmount  MonthlyAmort  ...  LoanBalance
       const amounts = [];
+      const amRe = /\b(\d{1,3}(?:,\d{3})*\.\d{2})\b/g;
       let am;
-      const amRe = new RegExp(AMOUNT_RE.source, 'g');
       while ((am = amRe.exec(afterLedger)) !== null) {
         amounts.push(parseFloat(am[1].replace(/,/g, '')));
       }
+      if (amounts.length >= 1) loanAmount    = amounts[0];           // 1st = Loan Amount
+      if (amounts.length >= 2) monthlyAmort  = amounts[1];           // 2nd = Monthly Amortization
+      if (amounts.length >= 1) loanBalance   = amounts[amounts.length - 1]; // last = Loan Balance
 
-      loanAmount = amounts[0] || null;           // first amount
-      monthlyAmort = amounts[1] || null;          // second amount
-      loanBalance = amounts[amounts.length - 1] || null; // last amount
-
-      // No. of months: common values 12,24,36,48,60,72,84,96,108,120
+      // --- No. of months (loan term): standard values only ---
       const monthsMatch = afterLedger.match(/\b(12|24|36|48|60|72|84|96|108|120)\b/);
       noOfMonths = monthsMatch ? parseInt(monthsMatch[1]) : null;
 
-      // Extract small integers after the amounts (months paid, month balance)
-      // These appear as standalone integers between termination date and loan balance
+      // --- Dates after LEDGER marker: MM/DD/YYYY or MM-DD-YYYY ---
+      // 1st date = Effective Date,  2nd date = Termination Date
+      const dateMatches = [...afterLedger.matchAll(/\b(\d{1,2}[\/\-]\d{2}[\/\-]\d{4})\b/g)];
+      if (dateMatches[0]) effectiveDate   = dateMatches[0][1].replace(/-/g, '/');
+      if (dateMatches[1]) terminationDate = dateMatches[1][1].replace(/-/g, '/');
+
+      // --- No. of months paid ---
+      // Strip date strings first so their components (07, 15 …) don't pollute integer scan
+      const afterLedgerNoDates = afterLedger.replace(/\b\d{1,2}[\/\-]\d{2}[\/\-]\d{4}\b/g, ' ');
       const smallInts = [];
       const intRe = /\b(\d{1,3})\b/g;
       let im;
-      while ((im = intRe.exec(afterLedger)) !== null) {
+      while ((im = intRe.exec(afterLedgerNoDates)) !== null) {
         const n = parseInt(im[1]);
-        if (n >= 0 && n <= 120) smallInts.push(n);
+        // Exclude the loan term itself; include 0–120
+        if (n >= 0 && n <= 120 && n !== noOfMonths) smallInts.push(n);
       }
-      // months paid is typically the first small int that is NOT the no_of_months value
-      const candidatePaid = smallInts.filter(n => n !== noOfMonths && n > 0);
+      // First positive small int that is not the term = no. of months paid
+      const candidatePaid = smallInts.filter(n => n > 0);
       noOfMonthsPaid = candidatePaid[0] ?? 0;
     }
 
-    // --- Step 6: status ---
+    // ── Step 8: status mapping ────────────────────────────────────────────
+    // PDF keywords          →  DB status value
+    // NOT QUALIFIED FOR RE-LOAN  →  'NOT QUALIFIED FOR RENEWAL'
+    // QUALIFIED FOR RE-LOAN      →  'QUALIFIED FOR RENEWAL'
+    // FULLY PAID                 →  'fully_paid'
+    // DECEASED                   →  'inactive'  (also sets employee status)
+    // (none)                     →  'active'
     let status = 'active';
-    if (/NOT QUALIFIED FOR RE-LOAN/i.test(line)) status = 'NOT QUALIFIED';
-    else if (/QUALIFIED FOR RE-LOAN/i.test(line)) status = 'QUALIFIED FOR RENEWAL';
-    else if (/DECEASED/i.test(line)) status = 'inactive';
-    else if (/FULLY PAID/i.test(line)) status = 'fully_paid';
+    let employeeStatus = 'active';
+    if (/NOT QUALIFIED FOR RE-LOAN/i.test(line)) {
+      status = 'NOT QUALIFIED FOR RENEWAL';
+    } else if (/QUALIFIED FOR RE-LOAN/i.test(line)) {
+      status = 'QUALIFIED FOR RENEWAL';
+    } else if (/DECEASED/i.test(line)) {
+      status = 'DECEASED';
+      employeeStatus = 'inactive';
+    } else if (/FULLY PAID/i.test(line)) {
+      status = 'fully_paid';
+    }
 
-    // --- Step 7: remarks after status keyword ---
+    // ── Step 9: remarks (text after the status keyword) ───────────────────
     let remarks = '';
-    const statusKw = line.match(/(NOT QUALIFIED FOR RE-LOAN|QUALIFIED FOR RE-LOAN|DECEASED|FULLY PAID)/i);
-    if (statusKw) {
-      remarks = line.substring(line.indexOf(statusKw[0]) + statusKw[0].length).trim();
+    const statusKwMatch = line.match(
+      /(NOT QUALIFIED FOR RE-LOAN|QUALIFIED FOR RE-LOAN|FULLY PAID|DECEASED)/i
+    );
+    if (statusKwMatch) {
+      remarks = line
+        .substring(line.indexOf(statusKwMatch[0]) + statusKwMatch[0].length)
+        .trim();
     }
 
     results.push({
-      employee_number: empNo,
-      first_name: first_name.toUpperCase(),
-      last_name: last_name.toUpperCase(),
-      middle_name: middle_name ? middle_name.toUpperCase() : null,
-      station: station.toUpperCase(),
-      check_number: checkNo,
-      check_date: checkDate,
-      loan_amount: loanAmount,
-      no_of_months: noOfMonths,
-      monthly_amortization: monthlyAmort,
-      no_of_months_paid: noOfMonthsPaid,
-      loan_balance: loanBalance,
+      // ── employees table ──
+      employee_number:   empNo,
+      station:           station.toUpperCase(),
+      first_name:        first_name.toUpperCase(),
+      middle_name:       middle_name ? middle_name.toUpperCase() : null,
+      last_name:         last_name.toUpperCase(),
+      employee_status:   employeeStatus,   // 'inactive' only if DECEASED
+
+      // ── loans table ──
+      loan_application_date: loanApplicationDate,  // derived from loan app number
+      loan_application_number: loanAppMatch ? loanAppMatch[1] : null,
+      check_number:          checkNo,
+      check_date:            checkDate,
+      effective_date:        effectiveDate,        // 1st date after LEDGER marker
+      termination_date:      terminationDate,      // 2nd date after LEDGER marker
+      loan_amount:           loanAmount,
+      no_of_months:          noOfMonths,
+      monthly_amortization:  monthlyAmort,
+      no_of_months_paid:     noOfMonthsPaid,
+      loan_balance:          loanBalance,
       status,
-      remarks: remarks.trim(),
+      remarks:               remarks.trim(),
     });
   }
 
@@ -795,24 +851,27 @@ exports.importEmployees = async (req, res) => {
       });
     }
 
-    const results = { created: 0, updated: 0, loansCreated: 0, errors: [] };
+    const results = { created: 0, updated: 0, loansCreated: 0, loansUpdated: 0, ledgerCreated: 0, errors: [] };
 
     for (let i = 0; i < parsedRows.length; i++) {
       const row = parsedRows[i];
       const empNum = row.employee_number;
 
       try {
-        // Upsert employee
+        // ── 1. Upsert employee ────────────────────────────────────────────
+        // Maps to: employees.employee_number, station, first_name, middle_name,
+        //          last_name, status
         const existing = await db.getEmployeeByNumber(empNum);
         const employeePayload = {
           employee_number: empNum,
-          station: row.station || 'Unknown',
-          first_name: (row.first_name || '').toUpperCase(),
-          last_name: (row.last_name || '').toUpperCase(),
-          middle_name: row.middle_name ? row.middle_name.toUpperCase() : null,
-          position: row.position || 'Staff',
-          department: row.department || 'General',
-          status: 'active',
+          station:      row.station    || 'Unknown',
+          first_name:   (row.first_name  || '').toUpperCase(),
+          last_name:    (row.last_name   || '').toUpperCase(),
+          middle_name:  row.middle_name  ? row.middle_name.toUpperCase() : null,
+          position:     row.position    || 'Staff',
+          department:   row.department  || 'General',
+          // DECEASED employees become inactive; everyone else stays active
+          status:       row.employee_status || 'active',
         };
 
         if (existing) {
@@ -823,29 +882,87 @@ exports.importEmployees = async (req, res) => {
           results.created++;
         }
 
-        // Create loan if loan data present and no existing loan
-        const loanAmt = parseNum(row.loan_amount);
+        // ── 2. Upsert loan ────────────────────────────────────────────────
+        // Maps to: loans.employee_number, loan_application_date, check_number,
+        //          check_date, effective_date, termination_date, loan_amount,
+        //          no_of_months, monthly_amortization, no_of_months_paid,
+        //          loan_balance, status, remarks
+        const loanAmt    = parseNum(row.loan_amount);
         const noOfMonths = parseNum(row.no_of_months);
+        const monthlyAmort  = parseNum(row.monthly_amortization);
+        const loanBalance   = parseNum(row.loan_balance);
+        const noOfMonthsPaid = parseInt(row.no_of_months_paid) || 0;
 
-        if (loanAmt > 0 && noOfMonths > 0) {
+        if (loanAmt > 0) {
+          const loanPayload = {
+            employee_number:      empNum,
+            loan_application_date: parseDate(row.loan_application_date),  // derived from app number
+            check_number:         row.check_number   || null,
+            check_date:           parseDate(row.check_date),
+            effective_date:       parseDate(row.effective_date),          // 1st date after LEDGER
+            termination_date:     parseDate(row.termination_date),        // 2nd date after LEDGER
+            loan_amount:          loanAmt,
+            no_of_months:         noOfMonths || 0,
+            monthly_amortization: monthlyAmort,
+            no_of_months_paid:    noOfMonthsPaid,
+            loan_balance:         loanBalance !== null ? loanBalance : loanAmt,
+            status:               row.status  || 'active',
+            remarks:              row.remarks  || null,
+            reason:               'Imported from Provident Fund Summary',
+            approved_by:          'Import',
+            interest_rate:        0,
+          };
+
           const existingLoan = await db.findLoanByEmployeeNumber(empNum);
-          if (!existingLoan) {
-            await db.createLoanDirect({
-              employee_number: empNum,
-              loan_amount: loanAmt,
-              no_of_months: noOfMonths,
-              monthly_amortization: parseNum(row.monthly_amortization),
-              effective_date: parseDate(row.effective_date),
-              loan_application_date: parseDate(row.loan_application_date),
-              check_number: row.check_number || null,
-              check_date: parseDate(row.check_date),
-              termination_date: parseDate(row.termination_date),
-              loan_balance: parseNum(row.loan_balance),
-              no_of_months_paid: parseNum(row.no_of_months_paid) || 0,
-              status: row.status || 'active',
-              remarks: row.remarks || null,
-            });
+          let loan;
+          if (existingLoan) {
+            // Update all fields — re-import always refreshes data
+            await db.updateLoan(existingLoan.id, loanPayload);
+            loan = await db.getLoanById(existingLoan.id);
+            results.loansUpdated++;
+          } else {
+            loan = await db.createLoanDirect(loanPayload);
             results.loansCreated++;
+          }
+
+          // ── 3. Ledger entry for months already paid ───────────────────
+          // Maps to: ledger_entries.employee_number, loan_id, amount_paid,
+          //          previous_balance, new_balance, no_of_months_paid,
+          //          reference_number, notes
+          //
+          // We create ONE aggregate entry per loan (representing all payments
+          // made to date) so the Payments section is populated. Skip if a
+          // ledger entry already exists for this loan.
+          if (noOfMonthsPaid > 0) {
+            const loanId = loan.id || loan.dataValues?.id;
+            const hasEntries = await db.hasLedgerEntries(loanId);
+            if (!hasEntries) {
+              // total paid = loan_amount − current loan_balance
+              const totalPaid = loanBalance !== null
+                ? Math.max(0, loanAmt - loanBalance)
+                : (monthlyAmort || 0) * noOfMonthsPaid;
+
+              await db.createLedgerEntry({
+                employee_number:        empNum,
+                loan_id:                loanId,
+                payment_date:           parseDate(row.effective_date) || new Date(),
+                amount_paid:            totalPaid > 0 ? totalPaid : (monthlyAmort || 0) * noOfMonthsPaid,
+                previous_balance:       loanAmt,
+                new_balance:            loanBalance !== null ? loanBalance : 0,
+                reference_number:       `IMPORT-${empNum}`,
+                recorded_by:            'Import',
+                notes:                  `Imported summary – ${noOfMonthsPaid} month(s) paid`,
+                payment_month:          null,
+                date_of_deduction:      parseDate(row.effective_date) || null,
+                payment_with_interest:  null,
+                principal_payments:     totalPaid > 0 ? totalPaid : null,
+                paid_status:            true,
+                monthly_payment_amount: monthlyAmort || null,
+                paid_months:            noOfMonthsPaid,
+                balance:                loanBalance !== null ? loanBalance : 0,
+              });
+              results.ledgerCreated++;
+            }
           }
         }
       } catch (err) {
@@ -855,7 +972,7 @@ exports.importEmployees = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Import complete: ${results.created} employees created, ${results.updated} updated, ${results.loansCreated} loans created.`,
+      message: `Import complete: ${results.created} employees created, ${results.updated} updated, ${results.loansCreated} loans created, ${results.loansUpdated} loans updated, ${results.ledgerCreated} payment records added.`,
       ...results,
     });
   } catch (err) {

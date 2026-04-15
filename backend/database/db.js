@@ -378,6 +378,23 @@ const findLoanByEmployeeNumber = async (employee_number) => {
   });
 };
 
+/**
+ * Returns true if at least one ledger entry exists for the given loan_id.
+ * Used during import to avoid creating duplicate aggregate payment records.
+ */
+const hasLedgerEntries = async (loanId) => {
+  const count = await LedgerEntry.count({ where: { loan_id: loanId } });
+  return count > 0;
+};
+
+/**
+ * Creates a single ledger entry directly from a payload object.
+ * Used by the bulk import to record aggregate payment history.
+ */
+const createLedgerEntry = async (payload) => {
+  return LedgerEntry.create(payload);
+};
+
 const getLedgerByEmployeeNumber = async (employee_number) => {
   return LedgerEntry.findAll({
     where: { employee_number },
@@ -457,6 +474,8 @@ module.exports = {
   recordPayment,
   createLoanDirect,
   findLoanByEmployeeNumber,
+  hasLedgerEntries,
+  createLedgerEntry,
   getLedgerByEmployeeNumber,
   findEmployeesByName,
   getAllEmployees,

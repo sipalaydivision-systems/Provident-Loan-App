@@ -323,7 +323,15 @@ export default function LoanSummaryReport() {
                     <ul className="text-sm text-green-700 space-y-0.5">
                       <li>• {importResult.created} employees created</li>
                       <li>• {importResult.updated} employees updated</li>
-                      <li>• {importResult.loansCreated} loans imported</li>
+                      {importResult.loansCreated > 0 && (
+                        <li>• {importResult.loansCreated} loans created</li>
+                      )}
+                      {importResult.loansUpdated > 0 && (
+                        <li>• {importResult.loansUpdated} loans updated</li>
+                      )}
+                      {importResult.ledgerCreated > 0 && (
+                        <li>• {importResult.ledgerCreated} payment records added</li>
+                      )}
                     </ul>
                     <p className="text-xs text-green-600 mt-1">
                       Data is now available in Employee Management, Loan Management, and Payments.

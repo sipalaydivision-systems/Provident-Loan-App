@@ -300,6 +300,19 @@ export default function EmployeeLedgerPage() {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 10mm; }
+          body { background: white !important; }
+          .print\\:hidden, header, .no-print { display: none !important; }
+          .print-area { margin: 0 !important; box-shadow: none !important; border: 1px solid #666 !important; overflow: visible !important; }
+          table { page-break-inside: auto; font-size: 8pt !important; }
+          tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          th, td { border: 0.5pt solid #666 !important; padding: 2pt 4pt !important; }
+          input[type="checkbox"] { display: none !important; }
+        }
+      `}</style>
 
       {toast && (
         <div className="fixed top-4 right-4 z-50 bg-green-600 text-white px-5 py-3 rounded-lg shadow-lg text-sm font-medium">
@@ -335,6 +348,10 @@ export default function EmployeeLedgerPage() {
               className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-3 py-1.5 rounded transition">
               ↑ Import
             </button>
+            <button onClick={() => window.print()}
+              className="bg-slate-700 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-1.5 rounded shadow transition flex items-center gap-1">
+              🖨 Print
+            </button>
           </div>
         </div>
       </header>
@@ -359,7 +376,7 @@ export default function EmployeeLedgerPage() {
       {/* ════════════════════════════════════════════════════════════════
           PROVIDENT LEDGER CARD — exact Google Sheet layout
       ════════════════════════════════════════════════════════════════ */}
-      <div className="mx-4 mt-3 mb-8 bg-white border border-slate-400 shadow-md overflow-x-auto">
+      <div className="mx-4 mt-3 mb-8 bg-white border border-slate-400 shadow-md overflow-x-auto print-area">
 
         {/* ── PAYSLIP row ── */}
         <div className="flex items-center justify-between px-3 py-1 border-b border-slate-300 text-[10px] text-slate-600">

@@ -236,6 +236,26 @@ export default function LoanSummaryReport() {
 
   return (
     <div className="min-h-screen bg-slate-100">
+      <style>{`
+        @media print {
+          @page { size: landscape; margin: 8mm; }
+          body { background: white !important; }
+          header, .no-print { display: none !important; }
+          .print-cards { display: none !important; }
+          .print-title { display: block !important; }
+          table { font-size: 7.5pt !important; page-break-inside: auto; }
+          tr { page-break-inside: avoid; }
+          thead { display: table-header-group; }
+          th { background: #334155 !important; color: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; padding: 2pt 4pt !important; }
+          td { padding: 2pt 4pt !important; border: 0.4pt solid #cbd5e1 !important; }
+          .print-page-title { text-align: center; font-size: 12pt; font-weight: bold; margin-bottom: 6pt; text-transform: uppercase; letter-spacing: 2pt; }
+          .print-meta { text-align: center; font-size: 8pt; color: #555; margin-bottom: 10pt; }
+        }
+        @media screen {
+          .print-title { display: none; }
+        }
+      `}</style>
+
       {/* ── top bar ── */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
         <div className="max-w-full px-4 py-3 flex items-center gap-4">
@@ -269,6 +289,12 @@ export default function LoanSummaryReport() {
               className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-1.5 rounded shadow transition"
             >
               ↑ Import Summary
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 bg-slate-700 hover:bg-slate-800 text-white text-sm font-semibold px-4 py-1.5 rounded shadow transition"
+            >
+              🖨 Print
             </button>
           </div>
         </div>
@@ -378,8 +404,14 @@ export default function LoanSummaryReport() {
         <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">{error}</div>
       )}
 
+      {/* ── print-only title (hidden on screen) ── */}
+      <div className="print-title">
+        <p className="print-page-title">PROVIDENT LOAN FUND</p>
+        <p className="print-meta">Loan Summary Report · Printed: {new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+      </div>
+
       {/* ── summary cards ── */}
-      <div className="px-4 pt-4 pb-2 flex gap-3 flex-wrap">
+      <div className="px-4 pt-4 pb-2 flex gap-3 flex-wrap no-print">
         {[
           { label: 'Active Borrowers', value: activeRows.length, color: 'text-blue-700' },
           { label: 'Total Loan Amount', value: `₱ ${totalLoanAmount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`, color: 'text-green-700' },

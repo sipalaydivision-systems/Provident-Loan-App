@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { adminAPI } from '../../lib/api';
+import { adminAPI, importAPI } from '../../lib/api';
 
 // ── types ──────────────────────────────────────────────────────────────────
 interface ReportRow {
@@ -49,6 +49,13 @@ export default function LoanSummaryReport() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [token, setToken] = useState('');
+
+  // Import state
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem('user');
@@ -120,6 +127,31 @@ export default function LoanSummaryReport() {
     } catch (e) {
       alert('CSV export failed. Please try again.');
     }
+  };
+
+  const handleImport = async () => {
+    if (!importFile) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await importAPI.importFile(importFile);
+      setImportResult({ success: true, ...res.data });
+      fetchReport(); // refresh the table with newly imported data
+    } catch (err: any) {
+      setImportResult({
+        success: false,
+        message: err.response?.data?.error || err.response?.data?.message || 'Import failed',
+        errors: err.response?.data?.errors || [],
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const closeImport = () => {
+    setImportOpen(false);
+    setImportFile(null);
+    setImportResult(null);
   };
 
   // ── render ──────────────────────────────────────────────────────────────
@@ -223,9 +255,107 @@ export default function LoanSummaryReport() {
             >
               ↓ Export CSV
             </button>
+            <button
+              onClick={() => { setImportOpen(true); setImportFile(null); setImportResult(null); }}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-1.5 rounded shadow transition"
+            >
+              ↑ Import Summary
+            </button>
           </div>
         </div>
       </header>
+
+      {/* ── Import Modal ── */}
+      {importOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-5">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Import Provident Fund Summary</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Upload your PDF or CSV summary file. All employees and loan data will be imported and immediately reflected in Employee Management, Loan Management, and Payments.
+              </p>
+            </div>
+
+            {!importResult ? (
+              <>
+                {/* Drop zone */}
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setImportFile(f); }}
+                  className="border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-lg p-8 text-center cursor-pointer transition"
+                >
+                  <div className="text-3xl mb-2">📄</div>
+                  {importFile ? (
+                    <div>
+                      <p className="font-semibold text-slate-700 text-sm">{importFile.name}</p>
+                      <p className="text-xs text-slate-400 mt-1">{(importFile.size / 1024).toFixed(1)} KB</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <p className="text-sm font-medium text-slate-600">Click or drag & drop your file here</p>
+                      <p className="text-xs text-slate-400 mt-1">PDF or CSV — Provident Fund Summary format</p>
+                    </div>
+                  )}
+                  <input ref={fileInputRef} type="file" accept=".pdf,.csv" className="hidden"
+                    onChange={(e) => setImportFile(e.target.files?.[0] || null)} />
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  <button onClick={closeImport} className="px-4 py-2 text-sm rounded border border-slate-300 text-slate-600 hover:bg-slate-50 transition">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleImport}
+                    disabled={!importFile || importing}
+                    className="px-5 py-2 text-sm rounded bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white font-semibold transition flex items-center gap-2"
+                  >
+                    {importing && <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                    {importing ? 'Importing…' : 'Import'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                {importResult.success ? (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-2">
+                    <p className="font-semibold text-green-700">✓ Import successful</p>
+                    <ul className="text-sm text-green-700 space-y-0.5">
+                      <li>• {importResult.created} employees created</li>
+                      <li>• {importResult.updated} employees updated</li>
+                      <li>• {importResult.loansCreated} loans imported</li>
+                    </ul>
+                    <p className="text-xs text-green-600 mt-1">
+                      Data is now available in Employee Management, Loan Management, and Payments.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="font-semibold text-red-700">✗ {importResult.message}</p>
+                  </div>
+                )}
+
+                {importResult.errors?.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto space-y-1">
+                    <p className="text-xs font-medium text-slate-500">Row errors ({importResult.errors.length}):</p>
+                    {importResult.errors.map((e: any, i: number) => (
+                      <p key={i} className="text-xs text-red-600 bg-red-50 rounded px-2 py-1">
+                        Row {e.row} ({e.employee}): {e.error}
+                      </p>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <button onClick={closeImport} className="px-5 py-2 text-sm rounded bg-slate-700 hover:bg-slate-800 text-white font-semibold transition">
+                    Done
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">{error}</div>

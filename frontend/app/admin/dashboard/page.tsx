@@ -15,14 +15,10 @@ import {
 } from 'recharts';
 import { DollarSign, Repeat2, TrendingUp, Activity, BarChart, Clock, Users, CreditCard, Receipt } from 'lucide-react';
 
-// Helper for currency formatting
+// Helper for currency formatting — Philippine Peso standard
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount);
+  if (amount === null || amount === undefined) return '₱ 0.00';
+  return '₱ ' + Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
 interface MetricCardProps {
@@ -42,7 +38,9 @@ const MetricCard: FC<MetricCardProps> = ({ title, value, unit = '', icon, descri
     </CardHeader>
     <CardContent>
       <div className={`text-2xl font-bold ${valueClassName}`}>
-        {unit}{typeof value === 'number' ? value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : '0'}
+        {unit === '₱'
+          ? formatCurrency(typeof value === 'number' ? value : 0)
+          : `${unit}${typeof value === 'number' ? value.toLocaleString() : '0'}`}
       </div>
       {description && <p className="text-xs text-muted-foreground mt-1">{description}</p>}
     </CardContent>
@@ -285,7 +283,7 @@ export default function AdminDashboard() {
             value={stats.loans?.totalAmount || 0}
             unit="₱"
             icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-            description={`Remaining: ₱${(stats.loans?.remainingBalance || 0).toLocaleString()}`}
+            description={`Remaining: ${formatCurrency(stats.loans?.remainingBalance || 0)}`}
             valueClassName="text-emerald-600"
           />
           <Card className="flex-1 min-w-[250px]">

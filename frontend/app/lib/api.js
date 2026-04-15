@@ -84,6 +84,11 @@ export const adminAPI = {
   ledger: {
     getAll: (params) => api.get('/admin/ledger', { params }),
     recordPayment: (data) => api.post('/admin/ledger/record-payment', data),
+    update: (entryId, data) => api.put(`/admin/ledger/${entryId}`, data),
+    delete: (entryId) => api.delete(`/admin/ledger/${entryId}`),
+  },
+  employeeLedger: {
+    get: (employeeNumber) => api.get(`/admin/employees/${employeeNumber}/ledger`),
   },
   dashboard: {
     getSummary: () => api.get('/admin/dashboard/summary'),

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { adminAPI, importAPI } from '../../lib/api';
+import { useCallback } from 'react';
 
 // ── types ──────────────────────────────────────────────────────────────────
 interface ReportRow {
@@ -19,6 +20,7 @@ interface ReportRow {
   monthly_amortization: number | string;
   termination_date: string;
   no_of_months_paid: number;
+  no_of_months_balance: number | string;
   loan_balance: number | string;
   status: string;
   remarks: string;
@@ -29,7 +31,7 @@ interface ReportRow {
 const peso = (v: number | string) =>
   v === '' || v === null || v === undefined
     ? '—'
-    : Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    : '₱ ' + Number(v).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function statusStyle(status: string): string {
   const s = (status || '').toUpperCase();
@@ -174,13 +176,14 @@ export default function LoanSummaryReport() {
     'w-24',  // App Date
     'w-20',  // Check No
     'w-20',  // Check Date
-    'w-24',  // Effective Date
     'w-28',  // Loan Amount
     'w-12',  // Months
     'w-28',  // Monthly Amor
+    'w-24',  // Effective Date
     'w-24',  // Termination
     'w-12',  // Months Paid
-    'w-28',  // Balance
+    'w-12',  // Months Balance
+    'w-28',  // Loan Balance
     'w-40',  // Status
     'w-28',  // Remarks
     'w-24',  // Notes
@@ -200,20 +203,26 @@ export default function LoanSummaryReport() {
 
   const renderRows = (list: ReportRow[], offset = 0) =>
     list.map((r, i) => (
-      <tr key={r.employee_number + i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+      <tr
+        key={r.employee_number + i}
+        className={`${i % 2 === 0 ? 'bg-white' : 'bg-slate-50'} hover:bg-blue-50 cursor-pointer transition-colors`}
+        onClick={() => router.push(`/admin/ledger/${r.employee_number}`)}
+        title={`View ledger for ${r.name}`}
+      >
         <TD cls="text-center text-slate-400">{offset + i + 1}</TD>
         <TD cls="text-center font-mono">{r.station}</TD>
-        <TD cls="font-mono">{r.employee_number}</TD>
-        <TD cls="font-medium">{r.name}</TD>
+        <TD cls="font-mono text-blue-700 underline underline-offset-2">{r.employee_number}</TD>
+        <TD cls="font-medium text-blue-800">{r.name}</TD>
         <TD>{r.loan_application_date}</TD>
         <TD cls="font-mono">{r.check_number}</TD>
         <TD>{r.check_date}</TD>
-        <TD>{r.effective_date}</TD>
         <TD right>{r.loan_amount !== '' ? peso(r.loan_amount) : '—'}</TD>
         <TD cls="text-center">{r.no_of_months !== '' ? r.no_of_months : '—'}</TD>
         <TD right>{r.monthly_amortization !== '' ? peso(r.monthly_amortization) : '—'}</TD>
+        <TD>{r.effective_date}</TD>
         <TD>{r.termination_date}</TD>
         <TD cls="text-center">{r.no_of_months_paid}</TD>
+        <TD cls="text-center text-slate-500">{r.no_of_months_balance !== '' ? r.no_of_months_balance : '—'}</TD>
         <TD right cls="font-semibold">{r.loan_balance !== '' ? peso(r.loan_balance) : '—'}</TD>
         <TD>
           <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold whitespace-nowrap ${statusStyle(r.status)}`}>
@@ -238,7 +247,7 @@ export default function LoanSummaryReport() {
             <h1 className="text-base font-bold text-slate-800 uppercase tracking-widest">
               PROVIDENT LOAN FUND
             </h1>
-            <p className="text-[11px] text-slate-500">Loan Summary Report</p>
+            <p className="text-[11px] text-slate-500">Loan Summary Report · <span className="text-blue-600">Click any row to view employee ledger</span></p>
           </div>
 
           <div className="flex items-center gap-2">
@@ -397,12 +406,13 @@ export default function LoanSummaryReport() {
               <TH>Loan Application Date</TH>
               <TH>Check No.</TH>
               <TH>Check Date</TH>
-              <TH>Effective Date</TH>
               <TH>Loan Amount</TH>
               <TH>No. of Months</TH>
               <TH>Monthly Amortization</TH>
+              <TH>Effective Date</TH>
               <TH>Termination Date</TH>
-              <TH>No. of Months Paid</TH>
+              <TH>Months Paid</TH>
+              <TH>Months Balance</TH>
               <TH>Loan Balance</TH>
               <TH>Status</TH>
               <TH>Remarks</TH>
@@ -413,7 +423,7 @@ export default function LoanSummaryReport() {
           <tbody>
             {activeRows.length === 0 && dischargedRows.length === 0 && (
               <tr>
-                <td colSpan={17} className="text-center py-8 text-slate-400 text-sm">
+                <td colSpan={18} className="text-center py-8 text-slate-400 text-sm">
                   No records found.
                 </td>
               </tr>
@@ -425,7 +435,7 @@ export default function LoanSummaryReport() {
             {/* totals row */}
             {activeRows.length > 0 && (
               <tr className="bg-slate-100 font-bold border-t-2 border-slate-400">
-                <td colSpan={8} className="px-2 py-1.5 text-[11px] border border-slate-300 text-right text-slate-600 uppercase tracking-wide">
+                <td colSpan={7} className="px-2 py-1.5 text-[11px] border border-slate-300 text-right text-slate-600 uppercase tracking-wide">
                   Totals
                 </td>
                 <td className="px-2 py-1 text-[11px] text-right border border-slate-300 text-green-700">
@@ -435,6 +445,8 @@ export default function LoanSummaryReport() {
                 <td className="px-2 py-1 text-[11px] text-right border border-slate-300 text-purple-700">
                   {peso(totalMonthly)}
                 </td>
+                <td className="border border-slate-300" />
+                <td className="border border-slate-300" />
                 <td className="border border-slate-300" />
                 <td className="border border-slate-300" />
                 <td className="px-2 py-1 text-[11px] text-right border border-slate-300 text-orange-600">
@@ -449,7 +461,7 @@ export default function LoanSummaryReport() {
               <>
                 <tr>
                   <td
-                    colSpan={17}
+                    colSpan={18}
                     className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-widest bg-red-600 text-white border border-red-700"
                   >
                     DISCHARGES

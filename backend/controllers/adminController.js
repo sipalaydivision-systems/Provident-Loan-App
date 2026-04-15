@@ -782,6 +782,66 @@ exports.recordPayment = async (req, res) => {
 };
 
 /**
+ * PUT /api/admin/ledger/:entryId - Update a ledger entry
+ */
+exports.updateLedgerEntry = async (req, res) => {
+  try {
+    const { entryId } = req.params;
+    const updates = req.body;
+    const entry = await db.updateLedgerEntry(parseInt(entryId, 10), updates);
+    if (!entry) {
+      return res.status(404).json({ success: false, error: 'Ledger entry not found' });
+    }
+    res.json({ success: true, data: entry, message: 'Ledger entry updated successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to update ledger entry', message: error.message });
+  }
+};
+
+/**
+ * DELETE /api/admin/ledger/:entryId - Delete a ledger entry
+ */
+exports.deleteLedgerEntry = async (req, res) => {
+  try {
+    const { entryId } = req.params;
+    const deleted = await db.deleteLedgerEntry(parseInt(entryId, 10));
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Ledger entry not found' });
+    }
+    res.json({ success: true, data: deleted, message: 'Ledger entry deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to delete ledger entry', message: error.message });
+  }
+};
+
+/**
+ * GET /api/admin/employees/:employeeNumber/ledger
+ * Returns employee info + all loans with their ledger entries
+ */
+exports.getEmployeeLedger = async (req, res) => {
+  try {
+    const { employeeNumber } = req.params;
+    const employee = await db.getEmployeeByNumber(employeeNumber);
+    if (!employee) {
+      return res.status(404).json({ success: false, error: 'Employee not found' });
+    }
+    const loans = await db.getLoansByEmployee(employeeNumber);
+    const loansWithLedger = await Promise.all(
+      loans.map(async (loan) => {
+        const entries = await db.getLedgerByLoanId(loan.id);
+        return { ...loan.toJSON(), ledger_entries: entries.map(e => e.toJSON()) };
+      })
+    );
+    res.json({
+      success: true,
+      data: { employee: employee.toJSON(), loans: loansWithLedger }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to fetch employee ledger', message: error.message });
+  }
+};
+
+/**
  * GET /api/admin/dashboard/summary - Dashboard summary statistics
  */
 exports.getDashboardSummary = async (req, res) => {

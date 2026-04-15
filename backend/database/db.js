@@ -85,7 +85,8 @@ const Loan = sequelize.define(
     remarks: { type: DataTypes.TEXT, allowNull: true },
     reason: { type: DataTypes.TEXT, allowNull: true },
     approved_by: { type: DataTypes.STRING, allowNull: true },
-    interest_rate: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 0 }
+    interest_rate: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 0 },
+    notes: { type: DataTypes.STRING, allowNull: true }
   },
   {
     tableName: 'loans',
@@ -423,6 +424,53 @@ const findEmployeesByName = async (firstName, lastName) => {
 const getAllEmployees = async () => Employee.findAll({ order: [['created_at', 'DESC']] });
 const getAllLoans = async () => Loan.findAll({ order: [['created_at', 'DESC']] });
 
+/**
+ * Get all loans for a specific employee, ordered by creation date ascending.
+ */
+const getLoansByEmployee = async (employee_number) => {
+  return Loan.findAll({
+    where: { employee_number },
+    order: [['created_at', 'ASC']]
+  });
+};
+
+/**
+ * Get all ledger entries for a specific loan.
+ */
+const getLedgerByLoanId = async (loan_id) => {
+  return LedgerEntry.findAll({
+    where: { loan_id },
+    order: [['payment_date', 'ASC'], ['created_at', 'ASC']]
+  });
+};
+
+/**
+ * Get a single ledger entry by id.
+ */
+const getLedgerEntryById = async (id) => {
+  return LedgerEntry.findByPk(id);
+};
+
+/**
+ * Update a ledger entry and recalculate loan balance accordingly.
+ */
+const updateLedgerEntry = async (id, updates) => {
+  const entry = await getLedgerEntryById(id);
+  if (!entry) return null;
+  await entry.update(updates);
+  return entry;
+};
+
+/**
+ * Delete a ledger entry.
+ */
+const deleteLedgerEntry = async (id) => {
+  const entry = await getLedgerEntryById(id);
+  if (!entry) return null;
+  await entry.destroy();
+  return entry;
+};
+
 const getDashboardSummary = async () => {
   const totalEmployees = await Employee.count();
   const totalLoans = await Loan.count();
@@ -477,6 +525,11 @@ module.exports = {
   hasLedgerEntries,
   createLedgerEntry,
   getLedgerByEmployeeNumber,
+  getLoansByEmployee,
+  getLedgerByLoanId,
+  getLedgerEntryById,
+  updateLedgerEntry,
+  deleteLedgerEntry,
   findEmployeesByName,
   getAllEmployees,
   getAllLoans,

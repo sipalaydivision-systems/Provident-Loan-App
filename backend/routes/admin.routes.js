@@ -39,6 +39,12 @@ router.delete('/loans/:loanId', authenticateToken, authorizeAdmin, adminControll
 
 router.get('/ledger', authenticateToken, authorizeAdmin, adminController.getAllLedgerEntries);
 router.post('/ledger/record-payment', authenticateToken, authorizeAdmin, adminController.recordPayment);
+router.put('/ledger/:entryId', authenticateToken, authorizeAdmin, adminController.updateLedgerEntry);
+router.delete('/ledger/:entryId', authenticateToken, authorizeAdmin, adminController.deleteLedgerEntry);
+
+// ==================== LEDGER BY EMPLOYEE ====================
+
+router.get('/employees/:employeeNumber/ledger', authenticateToken, authorizeAdmin, adminController.getEmployeeLedger);
 
 // ==================== REPORTS ====================
 

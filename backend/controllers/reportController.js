@@ -15,6 +15,10 @@ async function buildReportRows() {
       .filter(Boolean)
       .join(', ');
 
+    const noOfMonths = loan?.no_of_months ?? 0;
+    const noOfMonthsPaid = loan?.no_of_months_paid ?? 0;
+    const noOfMonthsBalance = noOfMonths > 0 ? noOfMonths - noOfMonthsPaid : '';
+
     rows.push({
       station: emp.station || '',
       employee_number: emp.employee_number,
@@ -26,16 +30,17 @@ async function buildReportRows() {
       check_date: loan?.check_date ? formatDate(loan.check_date) : '',
       effective_date: loan?.effective_date ? formatDate(loan.effective_date) : '',
       loan_amount: loan?.loan_amount ?? '',
-      no_of_months: loan?.no_of_months ?? '',
+      no_of_months: noOfMonths || '',
       monthly_amortization: loan?.monthly_amortization ?? '',
       termination_date: loan?.termination_date
         ? formatDate(loan.termination_date)
         : '',
-      no_of_months_paid: loan?.no_of_months_paid ?? 0,
+      no_of_months_paid: noOfMonthsPaid,
+      no_of_months_balance: noOfMonthsBalance,
       loan_balance: loan?.loan_balance ?? '',
       status: loan?.status || 'NO LOAN',
       remarks: loan?.remarks || '',
-      notes: emp.position || '',
+      notes: loan?.notes || emp.position || '',
     });
   }
 
@@ -91,12 +96,13 @@ exports.exportLoanSummaryCsv = async (req, res) => {
       'Loan Application Date',
       'Check No.',
       'Check Date',
-      'Effective Date',
       'Loan Amount',
       'No. of Months',
       'Monthly Amortization',
+      'Effective Date',
       'Termination Date',
       'No. of Months Paid',
+      'No. of Month Balance',
       'Loan Balance',
       'Status',
       'Remarks',
@@ -139,12 +145,13 @@ exports.exportLoanSummaryCsv = async (req, res) => {
           r.loan_application_date,
           r.check_number,
           r.check_date,
-          r.effective_date,
           r.loan_amount,
           r.no_of_months,
           r.monthly_amortization,
+          r.effective_date,
           r.termination_date,
           r.no_of_months_paid,
+          r.no_of_months_balance,
           r.loan_balance,
           r.status,
           r.remarks,

@@ -364,44 +364,16 @@ export default function AdminDashboard() {
       </Card>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Link href="/admin/employees">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Link href="/admin/report">
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                Manage Employees
+                Employee Ledger
               </CardTitle>
               <CardDescription>
-                Add, edit, or manage employee records
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </Link>
-
-        <Link href="/admin/loans">
-          <Card className="cursor-pointer hover:shadow-md transition-shadow">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Manage Loans
-              </CardTitle>
-              <CardDescription>
-                Create and manage loan records
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </Link>
-
-        <Link href="/admin/payments">
-          <Card className="cursor-pointer hover:shadow-md transition-shadow">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5" />
-                Record Payments
-              </CardTitle>
-              <CardDescription>
-                Record and track loan payments
+                Manage employees, loans, and payments — all in one place. Click any employee row in the report to open their full ledger.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -415,7 +387,7 @@ export default function AdminDashboard() {
                 Loan Summary Report
               </CardTitle>
               <CardDescription>
-                View &amp; export the Provident Loan Fund report
+                View &amp; export the Provident Loan Fund summary. Import from .xlsx, .csv, or .pdf.
               </CardDescription>
             </CardHeader>
           </Card>

@@ -9,12 +9,17 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
   fileFilter: (req, file, cb) => {
-    const allowed = ['application/pdf', 'text/csv', 'application/vnd.ms-excel'];
     const ext = file.originalname.toLowerCase();
-    if (allowed.includes(file.mimetype) || ext.endsWith('.pdf') || ext.endsWith('.csv')) {
+    const allowed = [
+      'application/pdf',
+      'text/csv',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    ];
+    if (allowed.includes(file.mimetype) || ext.endsWith('.pdf') || ext.endsWith('.csv') || ext.endsWith('.xlsx') || ext.endsWith('.xls')) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF or CSV files are allowed'));
+      cb(new Error('Only PDF, CSV, or Excel (.xlsx/.xls) files are allowed'));
     }
   },
 });
@@ -40,6 +45,7 @@ router.delete('/loans/:loanId', authenticateToken, authorizeAdmin, adminControll
 router.get('/ledger', authenticateToken, authorizeAdmin, adminController.getAllLedgerEntries);
 router.post('/ledger/record-payment', authenticateToken, authorizeAdmin, adminController.recordPayment);
 router.put('/ledger/:entryId', authenticateToken, authorizeAdmin, adminController.updateLedgerEntry);
+router.delete('/ledger/bulk', authenticateToken, authorizeAdmin, adminController.bulkDeleteLedgerEntries);
 router.delete('/ledger/:entryId', authenticateToken, authorizeAdmin, adminController.deleteLedgerEntry);
 
 // ==================== LEDGER BY EMPLOYEE ====================

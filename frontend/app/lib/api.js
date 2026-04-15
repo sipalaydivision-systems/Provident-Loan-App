@@ -86,6 +86,7 @@ export const adminAPI = {
     recordPayment: (data) => api.post('/admin/ledger/record-payment', data),
     update: (entryId, data) => api.put(`/admin/ledger/${entryId}`, data),
     delete: (entryId) => api.delete(`/admin/ledger/${entryId}`),
+    bulkDelete: (ids) => api.delete('/admin/ledger/bulk', { data: { ids } }),
   },
   employeeLedger: {
     get: (employeeNumber) => api.get(`/admin/employees/${employeeNumber}/ledger`),

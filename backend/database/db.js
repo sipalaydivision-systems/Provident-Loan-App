@@ -471,6 +471,14 @@ const deleteLedgerEntry = async (id) => {
   return entry;
 };
 
+/**
+ * Bulk-delete ledger entries by an array of ids.
+ * Returns the number of rows deleted.
+ */
+const bulkDeleteLedgerEntries = async (ids) => {
+  return LedgerEntry.destroy({ where: { id: { [Op.in]: ids } } });
+};
+
 const getDashboardSummary = async () => {
   const totalEmployees = await Employee.count();
   const totalLoans = await Loan.count();
@@ -530,6 +538,7 @@ module.exports = {
   getLedgerEntryById,
   updateLedgerEntry,
   deleteLedgerEntry,
+  bulkDeleteLedgerEntries,
   findEmployeesByName,
   getAllEmployees,
   getAllLoans,

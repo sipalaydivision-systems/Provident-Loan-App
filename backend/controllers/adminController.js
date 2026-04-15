@@ -1,5 +1,6 @@
 const db = require('../database/db');
 const pdfParse = require('pdf-parse');
+const XLSX = require('xlsx');
 
 // ==================== CSV / PDF HELPERS ====================
 
@@ -815,6 +816,24 @@ exports.deleteLedgerEntry = async (req, res) => {
 };
 
 /**
+ * DELETE /api/admin/ledger/bulk
+ * Body: { ids: [1, 2, 3, ...] }
+ */
+exports.bulkDeleteLedgerEntries = async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'ids array is required' });
+    }
+    const numericIds = ids.map(id => parseInt(id, 10)).filter(n => !isNaN(n));
+    const deleted = await db.bulkDeleteLedgerEntries(numericIds);
+    res.json({ success: true, deleted, message: `${deleted} ledger entries deleted` });
+  } catch (error) {
+    res.status(500).json({ success: false, error: 'Failed to bulk delete entries', message: error.message });
+  }
+};
+
+/**
  * GET /api/admin/employees/:employeeNumber/ledger
  * Returns employee info + all loans with their ledger entries
  */
@@ -875,11 +894,16 @@ exports.importEmployees = async (req, res) => {
     }
 
     const mime = req.file.mimetype;
-    const isPDF = mime === 'application/pdf' || req.file.originalname.toLowerCase().endsWith('.pdf');
-    const isCSV = mime === 'text/csv' || mime === 'application/vnd.ms-excel' || req.file.originalname.toLowerCase().endsWith('.csv');
+    const origName = req.file.originalname.toLowerCase();
+    const isPDF  = mime === 'application/pdf' || origName.endsWith('.pdf');
+    const isCSV  = mime === 'text/csv' || mime === 'application/vnd.ms-excel' || origName.endsWith('.csv');
+    const isXLSX = mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                || mime === 'application/vnd.ms-excel'
+                || origName.endsWith('.xlsx')
+                || origName.endsWith('.xls');
 
-    if (!isPDF && !isCSV) {
-      return res.status(400).json({ success: false, error: 'Only PDF or CSV files are supported' });
+    if (!isPDF && !isCSV && !isXLSX) {
+      return res.status(400).json({ success: false, error: 'Only PDF, CSV, or Excel (.xlsx/.xls) files are supported' });
     }
 
     let parsedRows = [];
@@ -889,6 +913,12 @@ exports.importEmployees = async (req, res) => {
       const data = await pdfParse(req.file.buffer);
       rawText = data.text;
       parsedRows = parsePDFText(rawText);
+    } else if (isXLSX && !isCSV) {
+      const workbook = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      const jsonRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      parsedRows = rowsFromCSV(jsonRows.map(r => r.map(c => c === null || c === undefined ? '' : String(c))));
     } else {
       const content = req.file.buffer.toString('utf8');
       rawText = content;

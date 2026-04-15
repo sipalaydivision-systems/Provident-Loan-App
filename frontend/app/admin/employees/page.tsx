@@ -16,7 +16,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, Edit, Trash2, Search, Users, ArrowLeft } from 'lucide-react';
+import { Plus, Edit, Trash2, Search, Users, ArrowLeft, Upload, FileText, CheckCircle, XCircle } from 'lucide-react';
+import { importAPI } from '../../lib/api';
 
 // Form validation schema
 const employeeSchema = z.object({
@@ -44,6 +45,12 @@ export default function EmployeesManagement() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Import state
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importResult, setImportResult] = useState<any>(null);
 
   const {
     register,
@@ -136,6 +143,31 @@ export default function EmployeesManagement() {
     reset();
   };
 
+  const handleImport = async () => {
+    if (!importFile) return;
+    setIsImporting(true);
+    setImportResult(null);
+    try {
+      const response = await importAPI.importFile(importFile);
+      setImportResult({ success: true, ...response.data });
+      fetchEmployees();
+    } catch (err: any) {
+      setImportResult({
+        success: false,
+        message: err.response?.data?.error || err.response?.data?.message || 'Import failed',
+        errors: err.response?.data?.errors || [],
+      });
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleImportDialogClose = () => {
+    setIsImportDialogOpen(false);
+    setImportFile(null);
+    setImportResult(null);
+  };
+
   const filteredEmployees = employees.filter(employee =>
     employee.employee_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     employee.first_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -211,6 +243,124 @@ export default function EmployeesManagement() {
             className="pl-10"
           />
         </div>
+        <div className="flex gap-2">
+          {/* Import Dialog */}
+          <Dialog open={isImportDialogOpen} onOpenChange={setIsImportDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" onClick={() => { setImportFile(null); setImportResult(null); }}>
+                <Upload className="h-4 w-4 mr-2" />
+                Import PDF/CSV
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Import Employees from File</DialogTitle>
+                <DialogDescription>
+                  Upload a Provident Loan Summary PDF or CSV file to bulk-import employees and their loan data.
+                </DialogDescription>
+              </DialogHeader>
+
+              {!importResult ? (
+                <div className="space-y-4">
+                  <div
+                    className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                    onClick={() => document.getElementById('import-file-input')?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files[0];
+                      if (file) setImportFile(file);
+                    }}
+                  >
+                    <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                    {importFile ? (
+                      <div>
+                        <p className="font-medium text-sm">{importFile.name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {(importFile.size / 1024).toFixed(1)} KB
+                        </p>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-sm font-medium">Click to select or drag & drop</p>
+                        <p className="text-xs text-muted-foreground mt-1">PDF or CSV files only</p>
+                      </div>
+                    )}
+                    <input
+                      id="import-file-input"
+                      type="file"
+                      accept=".pdf,.csv"
+                      className="hidden"
+                      onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                    />
+                  </div>
+
+                  <div className="bg-muted/50 rounded-md p-3 text-xs text-muted-foreground space-y-1">
+                    <p className="font-medium text-foreground">Expected format:</p>
+                    <p>• Columns: Station, Employee Number, Name, Loan Application Date, Loan Amount, No. of Months, etc.</p>
+                    <p>• Name format: LAST NAME, FIRST NAME, MIDDLE NAME</p>
+                    <p>• You can use the exported CSV from Reports as a template.</p>
+                  </div>
+
+                  <DialogFooter>
+                    <Button variant="outline" onClick={handleImportDialogClose}>Cancel</Button>
+                    <Button onClick={handleImport} disabled={!importFile || isImporting}>
+                      {isImporting ? (
+                        <>
+                          <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+                          Importing...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-4 w-4 mr-2" />
+                          Import
+                        </>
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {importResult.success ? (
+                    <div className="flex items-start gap-3 p-4 bg-green-500/10 border border-green-500/30 rounded-lg">
+                      <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                      <div>
+                        <p className="font-medium text-sm text-green-700 dark:text-green-400">{importResult.message}</p>
+                        <div className="mt-2 text-xs text-muted-foreground space-y-0.5">
+                          <p>• {importResult.created} employees created</p>
+                          <p>• {importResult.updated} employees updated</p>
+                          <p>• {importResult.loansCreated} loans created</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
+                      <XCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
+                      <p className="text-sm text-destructive">{importResult.message}</p>
+                    </div>
+                  )}
+
+                  {importResult.errors?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Row errors ({importResult.errors.length}):</p>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {importResult.errors.map((e: any, i: number) => (
+                          <p key={i} className="text-xs text-destructive bg-destructive/5 rounded px-2 py-1">
+                            Row {e.row} ({e.employee}): {e.error}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <DialogFooter>
+                    <Button onClick={handleImportDialogClose}>Done</Button>
+                  </DialogFooter>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={() => { setEditingEmployee(null); reset(); }}>

@@ -1,8 +1,23 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { authenticateToken, authorizeAdmin } = require('../middleware/auth');
 const adminController = require('../controllers/adminController');
 const reportController = require('../controllers/reportController');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+  fileFilter: (req, file, cb) => {
+    const allowed = ['application/pdf', 'text/csv', 'application/vnd.ms-excel'];
+    const ext = file.originalname.toLowerCase();
+    if (allowed.includes(file.mimetype) || ext.endsWith('.pdf') || ext.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF or CSV files are allowed'));
+    }
+  },
+});
 
 // ==================== EMPLOYEE MANAGEMENT ====================
 
@@ -36,9 +51,7 @@ router.get('/dashboard/summary', authenticateToken, authorizeAdmin, adminControl
 
 // ==================== BULK OPERATIONS ====================
 
-router.post('/import', authenticateToken, authorizeAdmin, (req, res) => {
-  res.json({ success: true, message: 'Import endpoint — to be implemented', imported: 0, errors: [] });
-});
+router.post('/import', authenticateToken, authorizeAdmin, upload.single('file'), adminController.importEmployees);
 
 router.get('/export', authenticateToken, authorizeAdmin, (req, res) => {
   res.json({ success: true, message: 'Export endpoint — to be implemented' });

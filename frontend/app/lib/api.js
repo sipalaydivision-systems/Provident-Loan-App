@@ -94,4 +94,15 @@ export const adminAPI = {
   },
 };
 
+// Import endpoint
+export const importAPI = {
+  importFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+};
+
 export default api;

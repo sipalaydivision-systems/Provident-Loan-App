@@ -92,204 +92,198 @@ function parsePersonName(fullName) {
  *   ledger     → created automatically from no_of_months_paid × monthly_amortization
  */
 function parsePDFText(rawText) {
-  const lines = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-    .split('\n').map(l => l.trim()).filter(Boolean);
+  // ── Normalise ─────────────────────────────────────────────────────────────
+  const text = rawText
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/\t/g, ' ')
+    .replace(/\f/g, '\n');   // form-feed = page break
+
+  // ── Locate every data LEDGER marker ──────────────────────────────────────
+  // Each data row contains either "PROVIDENT FUND - Google Sheets" (hyperlink text)
+  // or the word "LEDGER" alone (used for DECEASED rows that have no Sheets link).
+  // The column header also has the word "LEDGER" — we skip that one.
+  const markers = [];
+
+  for (const pf of ['PROVIDENT FUND - Google Sheets', 'PROVIDENT FUND- Google Sheets']) {
+    let pos = 0;
+    while ((pos = text.indexOf(pf, pos)) !== -1) {
+      markers.push({ start: pos, end: pos + pf.length });
+      pos += pf.length;
+    }
+  }
+
+  // Standalone "LEDGER" — only if surrounded by what looks like data, not header text
+  const ledgerRe = /\bLEDGER\b/g;
+  let lm;
+  while ((lm = ledgerRe.exec(text)) !== null) {
+    if (markers.some(m => m.start <= lm.index && lm.index < m.end)) continue;
+    const ctx = text.substring(Math.max(0, lm.index - 120), lm.index + 60).toLowerCase();
+    // Header row: contains both "check date" and "loan amount" near LEDGER
+    if (ctx.includes('check date') && ctx.includes('loan amount')) continue;
+    markers.push({ start: lm.index, end: lm.index + 6 });
+  }
+
+  markers.sort((a, b) => a.start - b.start);
+  if (markers.length === 0) return [];
+
   const results = [];
 
-  const SKIP = [
-    /^PROVIDENT LOAN FUND/i,
-    /^No\s+Station/i,
-    /^Loan\s+Application\s+Number/i,
-    /^No\.\s+of\s+Month/i,
-    /^#\s+OF\s+PAYMENT/i,
-    /^Station\s+Employee/i,
-    /^Name\s+of\s+Employee/i,
-  ];
+  for (let i = 0; i < markers.length; i++) {
+    const { start: mStart, end: mEnd } = markers[i];
 
-  const LEDGER_MARKERS = [
-    'PROVIDENT FUND - Google Sheets',
-    'PROVIDENT FUND- Google Sheets',
-    'LEDGER',
-  ];
+    // ── Pre-context: text immediately before this LEDGER marker ──────────
+    // Use a 700-char lookback window so that regardless of whether the PDF
+    // text is one-row-per-line or split cell-by-cell, we capture the employee
+    // info that precedes this marker.
+    const preRaw = text.substring(Math.max(0, mStart - 700), mStart);
+    const preText = preRaw.replace(/\s+/g, ' ').trim();
 
-  for (const line of lines) {
-    if (SKIP.some(p => p.test(line))) continue;
-    if (line.length < 15) continue;
+    // ── Post-context: text immediately after this LEDGER marker ───────────
+    const nextMStart = i < markers.length - 1 ? markers[i + 1].start : text.length;
+    const postRaw = text.substring(mEnd, Math.min(nextMStart, mEnd + 700));
+    const postText = postRaw.replace(/\s+/g, ' ').trim();
 
-    // ── Step 1: row must start with a row number ──────────────────────────
-    const rowMatch = line.match(/^(\d{1,3})\s+/);
-    if (!rowMatch) continue;
-    const afterRowNum = line.substring(rowMatch[0].length).trim();
+    // ── Employee number: 5–8 consecutive digits (last occurrence in preText) ──
+    // Station codes are 2–4 digits, so 5-8 digit requirement isolates employee IDs.
+    const empNoMatches = [...preText.matchAll(/\b(\d{5,8})\b/g)];
+    if (empNoMatches.length === 0) continue;          // e.g. row 5 (DECEASED, no EmpNo)
+    const lastEmp = empNoMatches[empNoMatches.length - 1];
+    const empNo   = lastEmp[1];
+    const empNoIdx = lastEmp.index;
 
-    // ── Step 2: locate the LEDGER marker ─────────────────────────────────
-    let ledgerIdx = -1;
-    let ledgerMarkerLen = 0;
-    for (const marker of LEDGER_MARKERS) {
-      const idx = afterRowNum.indexOf(marker);
-      if (idx !== -1) { ledgerIdx = idx; ledgerMarkerLen = marker.length; break; }
-    }
+    // ── Station ──────────────────────────────────────────────────────────
+    const beforeEmp = preText.substring(0, empNoIdx);
+    let employeeStatus = 'active';
+    if (/DECEASED/i.test(beforeEmp)) employeeStatus = 'inactive';
 
-    // ── Step 3: employee number (5–8 consecutive digits) ──────────────────
-    const empMatch = afterRowNum.match(/\b(\d{5,8})\b/);
-    if (!empMatch) continue;
-    const empNo = empMatch[1];
-    const empIdx = afterRowNum.indexOf(empNo);
+    const stationNums = beforeEmp.replace(/\(DECEASED\)/gi, '').match(/\b(\d{2,4})\b/g);
+    const station = stationNums ? stationNums[stationNums.length - 1] : 'Unknown';
 
-    // Station = text between row number and employee number
-    const stationRaw = afterRowNum.substring(0, empIdx)
-      .replace(/\(DECEASED\)/gi, '').trim();
-    const station = stationRaw || 'Unknown';
+    // ── Name + Loan Application Number ───────────────────────────────────
+    const afterEmpNo = preText.substring(empNoIdx + empNo.length).trim();
 
-    // ── Step 4: name and loan application number ──────────────────────────
-    const afterEmpNo = afterRowNum.substring(empIdx + empNo.length).trim();
-    // Loan application number: YYYY-MM-NNN  or  YYYY-NNN
-    const loanAppMatch = afterEmpNo.match(/\b(\d{4}-(?:\d{2}-\d{3,4}|\d{3,4}))\b/);
+    // Loan app pattern: YYYY-NNN  or  YYYY-MM-NNN  (or YYYY-MM-NNNN)
+    const loanAppRe  = /\b(\d{4}-(?:\d{2}-\d{3,5}|\d{3,5}))\b/;
+    const loanAppMatch = afterEmpNo.match(loanAppRe);
 
     let fullName = '';
     let afterName = afterEmpNo;
 
     if (loanAppMatch) {
-      const laidx = afterEmpNo.indexOf(loanAppMatch[1]);
-      fullName = afterEmpNo.substring(0, laidx).trim();
-      afterName = afterEmpNo.substring(laidx);
-    } else if (ledgerIdx !== -1) {
-      const beforeLedger = afterRowNum.substring(empIdx + empNo.length, ledgerIdx).trim();
-      fullName = beforeLedger
-        .replace(/\b\d{6}\b.*$/, '')
-        .replace(/\b\d{1,2}[-\/]\d{2}[-\/]\d{4}\b.*$/, '')
+      const laIdx = afterEmpNo.indexOf(loanAppMatch[1]);
+      fullName  = afterEmpNo.substring(0, laIdx).trim();
+      afterName = afterEmpNo.substring(laIdx);
+    } else {
+      // No loan app number — name ends at the first 6-digit number or a date
+      fullName = afterEmpNo
+        .replace(/\b\d{6}\b[\s\S]*$/, '')
+        .replace(/\b\d{1,2}[-\/]\d{1,2}[-\/]\d{4}\b[\s\S]*$/, '')
         .trim();
     }
 
-    fullName = fullName.replace(/\s+/g, ' ').trim();
+    fullName = fullName.replace(/\(DECEASED\)/gi, '').replace(/\s+/g, ' ').trim();
     if (!fullName || fullName.length < 2) continue;
 
     const { first_name, middle_name, last_name } = parsePersonName(fullName);
     if (!last_name) continue;
 
-    // ── Step 5: derive loan_application_date from loan app number ─────────
-    // e.g.  "2023-07-001"  →  loan_application_date = "07/01/2023"
-    //        "2023-001"    →  loan_application_date = "01/01/2023"
+    // ── Loan application date (derived from app number) ───────────────────
+    // "2023-07-001" → 07/01/2023     "2021-005" → 01/01/2021
     let loanApplicationDate = null;
     if (loanAppMatch) {
       const parts = loanAppMatch[1].split('-');
-      const year = parts[0];
+      const year  = parts[0];
       const month = parts.length >= 3 && parts[1].length === 2 ? parts[1] : '01';
       loanApplicationDate = `${month}/01/${year}`;
     }
 
-    // ── Step 6: check number and check date (before LEDGER marker) ────────
-    // Check number: 6-digit standalone number in afterName before the LEDGER portion
-    const preMarker = ledgerIdx !== -1
-      ? afterName.substring(0, afterName.indexOf(LEDGER_MARKERS.find(m => afterName.includes(m)) || '') || afterName.length)
-      : afterName;
+    // ── Check number (6 digits) and check date (before LEDGER marker) ─────
+    const checkNoM   = afterName.match(/\b(\d{6})\b/);
+    const checkNo    = checkNoM ? checkNoM[1] : null;
+    const checkDateM = afterName.match(/\b(\d{1,2}[-\/]\d{1,2}[-\/]\d{4})\b/);
+    const checkDate  = checkDateM ? checkDateM[1].replace(/-/g, '/') : null;
 
-    const checkNoMatch = preMarker.match(/\b(\d{6})\b/);
-    const checkNo = checkNoMatch ? checkNoMatch[1] : null;
-
-    // Check date: MM/DD/YYYY or MM-DD-YYYY before LEDGER marker
-    const checkDateMatch = preMarker.match(/\b(\d{1,2}[-\/]\d{2}[-\/]\d{4})\b/);
-    const checkDate = checkDateMatch ? checkDateMatch[1].replace(/-/g, '/') : null;
-
-    // ── Step 7: parse columns after LEDGER marker ─────────────────────────
+    // ── Loan data from postText (after LEDGER marker) ─────────────────────
     let loanAmount = null, noOfMonths = null, monthlyAmort = null;
     let loanBalance = null, noOfMonthsPaid = 0;
     let effectiveDate = null, terminationDate = null;
 
-    if (ledgerIdx !== -1) {
-      const afterLedger = afterRowNum.substring(ledgerIdx + ledgerMarkerLen).trim();
-
-      // --- Monetary amounts (comma-formatted, 2 decimal places) ---
-      // Order in PDF:  LoanAmount  MonthlyAmort  ...  LoanBalance
-      const amounts = [];
-      const amRe = /\b(\d{1,3}(?:,\d{3})*\.\d{2})\b/g;
-      let am;
-      while ((am = amRe.exec(afterLedger)) !== null) {
-        amounts.push(parseFloat(am[1].replace(/,/g, '')));
-      }
-      if (amounts.length >= 1) loanAmount    = amounts[0];           // 1st = Loan Amount
-      if (amounts.length >= 2) monthlyAmort  = amounts[1];           // 2nd = Monthly Amortization
-      if (amounts.length >= 1) loanBalance   = amounts[amounts.length - 1]; // last = Loan Balance
-
-      // --- No. of months (loan term): standard values only ---
-      const monthsMatch = afterLedger.match(/\b(12|24|36|48|60|72|84|96|108|120)\b/);
-      noOfMonths = monthsMatch ? parseInt(monthsMatch[1]) : null;
-
-      // --- Dates after LEDGER marker: MM/DD/YYYY or MM-DD-YYYY ---
-      // 1st date = Effective Date,  2nd date = Termination Date
-      const dateMatches = [...afterLedger.matchAll(/\b(\d{1,2}[\/\-]\d{2}[\/\-]\d{4})\b/g)];
-      if (dateMatches[0]) effectiveDate   = dateMatches[0][1].replace(/-/g, '/');
-      if (dateMatches[1]) terminationDate = dateMatches[1][1].replace(/-/g, '/');
-
-      // --- No. of months paid ---
-      // Strip date strings first so their components (07, 15 …) don't pollute integer scan
-      const afterLedgerNoDates = afterLedger.replace(/\b\d{1,2}[\/\-]\d{2}[\/\-]\d{4}\b/g, ' ');
-      const smallInts = [];
-      const intRe = /\b(\d{1,3})\b/g;
-      let im;
-      while ((im = intRe.exec(afterLedgerNoDates)) !== null) {
-        const n = parseInt(im[1]);
-        // Exclude the loan term itself; include 0–120
-        if (n >= 0 && n <= 120 && n !== noOfMonths) smallInts.push(n);
-      }
-      // First positive small int that is not the term = no. of months paid
-      const candidatePaid = smallInts.filter(n => n > 0);
-      noOfMonthsPaid = candidatePaid[0] ?? 0;
+    // Monetary amounts — comma-formatted with 2 decimals
+    // PDF column order: LoanAmount · MonthlyAmort · … · LoanBalance
+    const amounts = [];
+    const amRe = /\b(\d{1,3}(?:,\d{3})*\.\d{2})\b/g;
+    let am;
+    while ((am = amRe.exec(postText)) !== null) {
+      amounts.push(parseFloat(am[1].replace(/,/g, '')));
     }
+    if (amounts.length >= 1) loanAmount   = amounts[0];
+    if (amounts.length >= 2) monthlyAmort = amounts[1];
+    if (amounts.length >= 1) loanBalance  = amounts[amounts.length - 1];
 
-    // ── Step 8: status mapping ────────────────────────────────────────────
-    // PDF keywords          →  DB status value
-    // NOT QUALIFIED FOR RE-LOAN  →  'NOT QUALIFIED FOR RENEWAL'
-    // QUALIFIED FOR RE-LOAN      →  'QUALIFIED FOR RENEWAL'
-    // FULLY PAID                 →  'fully_paid'
-    // DECEASED                   →  'inactive'  (also sets employee status)
-    // (none)                     →  'active'
+    // No. of months (loan term) — only standard values
+    const monthsM = postText.match(/\b(12|24|36|48|60|72|84|96|108|120)\b/);
+    noOfMonths = monthsM ? parseInt(monthsM[1]) : null;
+
+    // Dates after LEDGER: MM/DD/YYYY — 1st = Effective, 2nd = Termination
+    const datesInPost = [...postText.matchAll(/\b(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})\b/g)];
+    if (datesInPost[0]) effectiveDate   = datesInPost[0][1].replace(/-/g, '/');
+    if (datesInPost[1]) terminationDate = datesInPost[1][1].replace(/-/g, '/');
+
+    // No. of months paid — small integer not equal to the loan term
+    const postNoDates = postText.replace(/\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}\b/g, ' ');
+    const paidCandidates = [];
+    const intRe = /\b(\d{1,3})\b/g;
+    let im;
+    while ((im = intRe.exec(postNoDates)) !== null) {
+      const n = parseInt(im[1]);
+      if (n > 0 && n <= 120 && n !== noOfMonths) paidCandidates.push(n);
+    }
+    noOfMonthsPaid = paidCandidates[0] ?? 0;
+
+    // ── Status ────────────────────────────────────────────────────────────
+    const combined = preText + ' ' + postText;
     let status = 'active';
-    let employeeStatus = 'active';
-    if (/NOT QUALIFIED FOR RE-LOAN/i.test(line)) {
-      status = 'NOT QUALIFIED FOR RENEWAL';
-    } else if (/QUALIFIED FOR RE-LOAN/i.test(line)) {
-      status = 'QUALIFIED FOR RENEWAL';
-    } else if (/DECEASED/i.test(line)) {
-      status = 'DECEASED';
-      employeeStatus = 'inactive';
-    } else if (/FULLY PAID/i.test(line)) {
-      status = 'fully_paid';
-    }
+    if (/NOT QUALIFIED FOR RE-LOAN/i.test(combined))     status = 'NOT QUALIFIED FOR RENEWAL';
+    else if (/QUALIFIED FOR RE-LOAN/i.test(combined))    status = 'QUALIFIED FOR RENEWAL';
+    else if (/DECEASED/i.test(combined))               { status = 'DECEASED'; employeeStatus = 'inactive'; }
+    else if (/FULLY PAID/i.test(postText))               status = 'fully_paid';
 
-    // ── Step 9: remarks (text after the status keyword) ───────────────────
+    // ── Remarks ───────────────────────────────────────────────────────────
     let remarks = '';
-    const statusKwMatch = line.match(
+    const statusKwM = combined.match(
       /(NOT QUALIFIED FOR RE-LOAN|QUALIFIED FOR RE-LOAN|FULLY PAID|DECEASED)/i
     );
-    if (statusKwMatch) {
-      remarks = line
-        .substring(line.indexOf(statusKwMatch[0]) + statusKwMatch[0].length)
-        .trim();
+    if (statusKwM) {
+      const kwPos = combined.indexOf(statusKwM[0]) + statusKwM[0].length;
+      remarks = combined.substring(kwPos)
+        .trim()
+        .replace(/^\s*\d{1,3}\s+\d{2,4}\s+/, '')   // strip next row's num+station
+        .split(/\b\d{1,3}\s+(?:\d{2,4}|\bDECEASED\b)/)[0]
+        .trim()
+        .substring(0, 300);
     }
 
     results.push({
-      // ── employees table ──
-      employee_number:   empNo,
-      station:           station.toUpperCase(),
-      first_name:        first_name.toUpperCase(),
-      middle_name:       middle_name ? middle_name.toUpperCase() : null,
-      last_name:         last_name.toUpperCase(),
-      employee_status:   employeeStatus,   // 'inactive' only if DECEASED
-
-      // ── loans table ──
-      loan_application_date: loanApplicationDate,  // derived from loan app number
+      employee_number:         empNo,
+      station:                 station,
+      first_name:              first_name.toUpperCase(),
+      middle_name:             middle_name ? middle_name.toUpperCase() : null,
+      last_name:               last_name.toUpperCase(),
+      employee_status:         employeeStatus,
+      loan_application_date:   loanApplicationDate,
       loan_application_number: loanAppMatch ? loanAppMatch[1] : null,
-      check_number:          checkNo,
-      check_date:            checkDate,
-      effective_date:        effectiveDate,        // 1st date after LEDGER marker
-      termination_date:      terminationDate,      // 2nd date after LEDGER marker
-      loan_amount:           loanAmount,
-      no_of_months:          noOfMonths,
-      monthly_amortization:  monthlyAmort,
-      no_of_months_paid:     noOfMonthsPaid,
-      loan_balance:          loanBalance,
+      check_number:            checkNo,
+      check_date:              checkDate,
+      effective_date:          effectiveDate,
+      termination_date:        terminationDate,
+      loan_amount:             loanAmount,
+      no_of_months:            noOfMonths,
+      monthly_amortization:    monthlyAmort,
+      no_of_months_paid:       noOfMonthsPaid,
+      loan_balance:            loanBalance,
       status,
-      remarks:               remarks.trim(),
+      remarks,
     });
   }
 

@@ -365,15 +365,15 @@ export default function AdminDashboard() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Link href="/admin/report">
+        <Link href="/admin/employees">
           <Card className="cursor-pointer hover:shadow-md transition-shadow">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Users className="h-5 w-5" />
-                Employee Ledger
+                Account Management
               </CardTitle>
               <CardDescription>
-                Manage employees, loans, and payments — all in one place. Click any employee row in the report to open their full ledger.
+                Add and manage employees and loans. Click any employee row to open their full ledger card.
               </CardDescription>
             </CardHeader>
           </Card>

@@ -511,6 +511,7 @@ export default function EmployeesManagement() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Employees Table */}

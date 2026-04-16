@@ -410,23 +410,60 @@ function rowsFromCSV(csvRows) {
  * DECEASED employees are skipped on import.
  */
 function rowsFromProvidentXLSX(rawRows) {
-  // Find the header row — it's the first row containing "Employee Number"
+  // Find the header row — first row in first 6 rows containing "Employee Number"
   let headerRowIdx = -1;
-  for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
-    if (rawRows[i].some(c => /employee\s*number/i.test(String(c)))) {
+  for (let i = 0; i < Math.min(rawRows.length, 6); i++) {
+    if (rawRows[i].some(c => /employee[\s_]?number/i.test(String(c)))) {
       headerRowIdx = i;
       break;
     }
   }
   if (headerRowIdx === -1 || headerRowIdx + 1 >= rawRows.length) return [];
 
-  const headers = rawRows[headerRowIdx].map(h => String(h || '').toLowerCase().trim());
+  // Build the effective header array.
+  // If the Excel has a merged "LEDGER" cell spanning the loan columns, those
+  // columns appear as empty strings in the primary header row.  We fall back to
+  // the *next* row's cells as sub-headers to recover the individual column names.
+  const primaryH   = rawRows[headerRowIdx].map(h => String(h || '').toLowerCase().trim());
+  const secondaryH = (rawRows[headerRowIdx + 1] || []).map(h => String(h || '').toLowerCase().trim());
+  const headers    = primaryH.map((h, i) => h || secondaryH[i] || '');
 
-  const col = (row, ...names) => {
+  // If combined headers still lack loan columns, switch to positional mode.
+  const hasNamedLoanCols = headers.some(h =>
+    h.includes('loan amount') || h.includes('monthly amortization') || h.includes('loan balance')
+  );
+
+  // Anchor column: index of "Employee Number"
+  const empColIdx = headers.findIndex(h => /employee[\s_]?number/.test(h));
+
+  // Named-column lookup
+  const colByName = (row, ...names) => {
     for (const name of names) {
       const idx = headers.findIndex(h => h.includes(name));
       if (idx !== -1) return row[idx] != null ? String(row[idx]) : '';
     }
+    return '';
+  };
+
+  // Positional lookup relative to empColIdx.
+  // Expected column offsets from "Employee Number":
+  //   -1 = Station,  0 = EmpNo,   +1 = Name,         +2 = LoanAppNo
+  //   +3 = CheckNo,  +4 = CheckDate, +5 = LEDGER(link)
+  //   +6 = LoanAmt,  +7 = NoOfMonths, +8 = MonthlyAmort
+  //   +9 = EffDate,  +10 = TermDate,  +11 = MonthsPaid
+  //   +12 = MonthsBal, +13 = LoanBal, +14 = Status
+  //   +15 = Remarks, +16 = Notes
+  const colByPos = (row, offset) => {
+    if (empColIdx === -1) return '';
+    const idx = empColIdx + offset;
+    return (idx >= 0 && idx < row.length && row[idx] != null) ? String(row[idx]) : '';
+  };
+
+  // Unified getter: named first, positional fallback when no named loan cols exist
+  const get = (row, names, posOffset) => {
+    const byName = colByName(row, ...names);
+    if (byName !== '') return byName;
+    if (!hasNamedLoanCols && posOffset != null) return colByPos(row, posOffset);
     return '';
   };
 
@@ -436,51 +473,61 @@ function rowsFromProvidentXLSX(rawRows) {
     const row = rawRows[i];
     if (!row || row.length < 3) continue;
 
-    const empNum = col(row, 'employee number', 'employee_number', 'emp no').trim();
+    const empNum = (
+      colByName(row, 'employee number', 'employee_number', 'emp no') ||
+      (empColIdx !== -1 && row[empColIdx] != null ? String(row[empColIdx]) : '')
+    ).trim();
     if (!empNum || !/^\d{5,10}$/.test(empNum)) continue;
 
-    // Skip DECEASED employees
-    const rawStatus = col(row, 'status').trim();
+    const rawStatus = get(row, ['status'], 14).trim();
     if (/deceased/i.test(rawStatus)) continue;
 
-    // Name is in "FIRSTNAME [MI.] LASTNAME" format
-    const rawName = col(row, 'name of employee', 'name').trim();
+    const rawName = (
+      colByName(row, 'name of employee', 'name') || colByPos(row, 1)
+    ).trim();
     if (!rawName) continue;
     const { first_name, middle_name, last_name } = parsePersonName(rawName);
     if (!last_name || !first_name) continue;
 
-    const loanAmt    = parseNum(col(row, 'loan amount'));
-    const noOfMonths = parseNum(col(row, 'no. of months', 'no of months'));
-    const monthlyAmort = parseNum(col(row, 'monthly amortization'));
-    const noMonthsPaid = parseNum(col(row, 'no. of month paid', 'months paid', 'no of month paid')) ?? 0;
-    const loanBal = parseNum(col(row, 'loan balance'));
+    const loanAmtRaw      = get(row, ['loan amount', 'loan amt'], 6);
+    const noOfMonthsRaw   = get(row, ['no. of months', 'no of months'], 7);
+    const monthlyAmortRaw = get(row, ['monthly amortization', 'monthly amort', 'amortization'], 8);
+    const noMonthsPaidRaw = get(row, ['no. of month paid', 'no. of months paid', 'months paid', 'no of month paid'], 11);
+    const loanBalRaw      = get(row, ['loan balance'], 13);
 
-    // Dates may come as formatted strings or Excel serials converted to strings
-    const effectiveDateRaw    = col(row, 'effective date').trim();
-    const terminationDateRaw  = col(row, 'termination date').trim();
-    const checkDateRaw        = col(row, 'check date').trim();
-    const loanAppNumRaw       = col(row, 'loan application number', 'loan application').trim();
+    const loanAmt      = parseNum(loanAmtRaw);
+    const noOfMonths   = parseNum(noOfMonthsRaw);
+    const monthlyAmort = parseNum(monthlyAmortRaw);
+    const noMonthsPaid = parseNum(noMonthsPaidRaw) ?? 0;
+    const loanBal      = parseNum(loanBalRaw);
+
+    const effectiveDateRaw   = get(row, ['effective date'], 9).trim();
+    const terminationDateRaw = get(row, ['termination date'], 10).trim();
+    const checkDateRaw       = get(row, ['check date'], 4).trim();
+    const loanAppNumRaw      = get(row, ['loan application number', 'loan application'], 2).trim();
+    const checkNoRaw         = get(row, ['check no'], 3).trim();
+    const stationRaw         = (colByName(row, 'station') || colByPos(row, -1)).trim();
 
     results.push({
-      employee_number:      empNum,
-      first_name:           first_name.toUpperCase(),
-      middle_name:          middle_name ? middle_name.toUpperCase() : null,
-      last_name:            last_name.toUpperCase(),
-      station:              col(row, 'station').trim() || 'Unknown',
+      employee_number:       empNum,
+      first_name:            first_name.toUpperCase(),
+      middle_name:           middle_name ? middle_name.toUpperCase() : null,
+      last_name:             last_name.toUpperCase(),
+      station:               stationRaw || 'Unknown',
       loan_application_date: loanAppNumRaw ? parseDate(loanAppNumRaw) : null,
-      check_number:         col(row, 'check no').trim() || null,
-      check_date:           checkDateRaw ? parseDate(checkDateRaw) : null,
-      effective_date:       effectiveDateRaw ? parseDate(effectiveDateRaw) : null,
-      termination_date:     terminationDateRaw ? parseDate(terminationDateRaw) : null,
-      loan_amount:          loanAmt,
-      no_of_months:         noOfMonths,
-      monthly_amortization: monthlyAmort,
-      no_of_months_paid:    noMonthsPaid,
-      loan_balance:         loanBal,
-      status:               rawStatus || 'QUALIFIED FOR RENEWAL',
-      remarks:              col(row, 'remarks').trim() || '',
-      notes:                col(row, 'notes').trim() || '',
-      employee_status:      'active',
+      check_number:          checkNoRaw || null,
+      check_date:            checkDateRaw ? parseDate(checkDateRaw) : null,
+      effective_date:        effectiveDateRaw ? parseDate(effectiveDateRaw) : null,
+      termination_date:      terminationDateRaw ? parseDate(terminationDateRaw) : null,
+      loan_amount:           loanAmt,
+      no_of_months:          noOfMonths,
+      monthly_amortization:  monthlyAmort,
+      no_of_months_paid:     noMonthsPaid,
+      loan_balance:          loanBal,
+      status:                rawStatus || 'QUALIFIED FOR RENEWAL',
+      remarks:               get(row, ['remarks'], 15).trim() || '',
+      notes:                 get(row, ['notes'], 16).trim() || '',
+      employee_status:       'active',
     });
   }
   return results;
@@ -1196,10 +1243,13 @@ exports.importEmployees = async (req, res) => {
       }
     }
 
+    const rowsWithLoanData = parsedRows.filter(r => r.loan_amount != null && r.loan_amount > 0).length;
     res.json({
       success: true,
       message: `Import complete: ${results.created} employees created, ${results.updated} updated, ${results.loansCreated} loans created, ${results.loansUpdated} loans updated, ${results.ledgerCreated} payment records added.`,
       ...results,
+      rowsParsed: parsedRows.length,
+      rowsWithLoanData,
     });
   } catch (err) {
     console.error('Import error:', err);

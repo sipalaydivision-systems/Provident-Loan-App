@@ -137,32 +137,13 @@ export default function Home() {
             </Link>
           </div>
 
-          {/* Status Section */}
-          <section className="bg-gradient-to-r from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-2xl p-8 backdrop-blur-xl">
-            <h3 className="text-xl font-semibold text-white mb-8 text-center">System Status</h3>
-            <div className="grid md:grid-cols-3 gap-6">
-              {[
-                { icon: '⚡', label: 'Backend API', value: 'Running', color: 'from-purple-400 to-blue-400' },
-                { icon: '🎨', label: 'Frontend', value: 'Ready', color: 'from-blue-400 to-cyan-400' },
-                { icon: '💾', label: 'Database', value: 'Active', color: 'from-cyan-400 to-emerald-400' }
-              ].map((item, idx) => (
-                <div key={idx} className="text-center p-4 rounded-lg bg-slate-800/30 border border-slate-700/30">
-                  <div className="text-3xl mb-2">{item.icon}</div>
-                  <p className="text-slate-400 text-sm mb-1">{item.label}</p>
-                  <p className={`text-lg font-semibold bg-gradient-to-r ${item.color} bg-clip-text text-transparent`}>
-                    {item.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
         </div>
 
         {/* Footer */}
         <footer className="border-t border-slate-700/50 bg-slate-900/30 backdrop-blur mt-20 py-8 text-center text-slate-400 text-sm">
           <div className="max-w-7xl mx-auto px-6 space-y-2">
-            <p>Provident Loan Management System v1.0</p>
-            <p className="text-xs">© 2026 All Rights Reserved • Built with modern security standards</p>
+            <p>Provident Fund – Schools Division Office of Sipalay City</p>
+            <p className="text-xs">© 2026 Accounting Section</p>
           </div>
         </footer>
       </div>

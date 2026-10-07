@@ -12,7 +12,7 @@ Before starting, ensure you have:
 
 - **Node.js** (v18 or higher) - [Download](https://nodejs.org)
 - **npm** or **yarn** (comes with Node.js)
-- **MySQL** or **MariaDB** (v5.7+) - [Download](https://www.mysql.com/downloads)
+- **PostgreSQL** (v14+) - [Download](https://www.postgresql.org/download/)
 - **Git** (optional but recommended)
 - **VS Code** or preferred code editor
 - **Postman** or **Insomnia** for API testing
@@ -52,7 +52,7 @@ Before starting, ensure you have:
 │                               │                               │
 │                    ┌──────────▼────────────┐                  │
 │                    │   DATABASE            │                  │
-│                    │   (MySQL/MariaDB)     │                  │
+│                    │   (PostgreSQL)        │                  │
 │                    │                       │                  │
 │                    │  • Employees          │                  │
 │                    │  • Provident Loans    │                  │
@@ -117,12 +117,12 @@ provident-loan-system/
 #### 1.1 Create Database
 
 ```bash
-# Connect to MySQL
-mysql -u root -p
+# Connect to PostgreSQL
+psql -U postgres
 
 # Create database
-CREATE DATABASE provident_loan_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE provident_loan_db;
+CREATE DATABASE provident_loan_db;
+\c provident_loan_db
 ```
 
 #### 1.2 Create Tables
@@ -174,9 +174,9 @@ cp .env.example .env
 
 # Edit .env with your database credentials
 # DB_HOST=localhost
-# DB_PORT=3306
+# DB_PORT=5432
 # DB_NAME=provident_loan_db
-# DB_USER=root
+# DB_USER=postgres
 # DB_PASSWORD=your_password
 ```
 
@@ -194,7 +194,7 @@ const sequelize = new Sequelize(
   {
     host: process.env.DB_HOST,
     port: process.env.DB_PORT,
-    dialect: 'mysql'
+    dialect: 'postgres'
   }
 );
 

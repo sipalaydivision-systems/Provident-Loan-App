@@ -1,6 +1,17 @@
 # Provident Loan Management System
 
-A comprehensive full-stack web application for managing provident fund loans across 500-1000 employees.
+Provident Fund loan register and subsidiary ledger for the **Accounting Section, Schools Division Office (SDO) of Sipalay City**, DepEd. It replaces the manual Google Sheet used to monitor DepEd Provident Fund (PF) loans.
+
+## DepEd rules implemented
+
+| Rule | Basis |
+|---|---|
+| 6% per annum, diminishing/declining balance, equal monthly amortization (rounded up to the centavo) | DO 52 s.2017; DO 37 s.2018 |
+| Term 12–60 months; Multi-Purpose Loan max ₱100,000; Additional Loan max ₱200,000 | DO 37 s.2018; DO 3 & 8 s.2022 |
+| Renewal when ≥ 30% of the existing loan's principal is paid | DO 52 s.2017; DO 37 s.2018 |
+| 3-month moratorium 1 Jul – 30 Sep 2026: no deduction, no additional interest, term extended 3 months; Annex A report | DepEd Memorandum dated 24 June 2026 |
+
+Loan approval remains with the SDS (Multi-Purpose) / Regional Director (Additional) through the PF Division Board Secretariat; this system records approved loans, deductions and balances.
 
 ---
 
@@ -89,7 +100,7 @@ provident-loan-system/
 
 ### Prerequisites
 - Node.js 18+
-- MySQL 5.7+
+- PostgreSQL 14+
 - npm or yarn
 
 ### Backend Setup
@@ -223,7 +234,7 @@ See [API_DOCUMENTATION.md](./docs/API_DOCUMENTATION.md) for complete reference.
 ### Backend
 - **Runtime**: Node.js
 - **Framework**: Express.js
-- **Database**: MySQL/MariaDB
+- **Database**: PostgreSQL (Railway)
 - **ORM**: Sequelize
 - **Authentication**: JWT
 - **Password Hashing**: bcryptjs
@@ -293,7 +304,7 @@ docker-compose up --build
 # Services will be available at:
 # - Frontend: http://localhost:3000
 # - Backend: http://localhost:5000
-# - MySQL: localhost:3306
+# - PostgreSQL: localhost:5432
 ```
 
 ---

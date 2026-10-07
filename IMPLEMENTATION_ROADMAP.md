@@ -33,7 +33,7 @@
 ```
 Tasks:
   ✅ Schema design (COMPLETED)
-  ⏳ Create MySQL database
+  ⏳ Create PostgreSQL database
   ⏳ Run SQL scripts
   ⏳ Create initial admin user
   ⏳ Verify all tables created
@@ -395,7 +395,7 @@ Total: 4-7 weeks depending on team size and experience
 
 | Milestone | Target Date | Deliverables |
 |-----------|-------------|---|
-| Database Ready | End of Week 1 | MySQL DB with schema, initial users |
+| Database Ready | End of Week 1 | PostgreSQL DB with schema, initial users |
 | Backend API Complete | End of Week 3 | All endpoints working, tested |
 | Admin Portal MVP | End of Week 5 | Basic employee/loan management |
 | Employee Portal MVP | End of Week 6 | Search and view functionality |
@@ -435,7 +435,7 @@ Total: 4-7 weeks depending on team size and experience
 **Backend Development:**
 - Node.js debugger: `node --inspect server.js`
 - Postman/Insomnia: API testing
-- MySQL Workbench: Database management
+- pgAdmin: Database management
 - Git: Version control
 
 **Frontend Development:**
@@ -453,12 +453,12 @@ Total: 4-7 weeks depending on team size and experience
    - Study DATABASE_SCHEMA_UPDATED.md
 
 2. **Setup Local Environment**
-   - Install Node.js & MySQL
+   - Install Node.js & PostgreSQL
    - Clone/setup project
    - Follow SETUP_GUIDE.md
 
 3. **Start with Database**
-   - Create MySQL database
+   - Create PostgreSQL database
    - Run SQL schema
 
 4. **Build Backend Incrementally**

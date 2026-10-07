@@ -95,13 +95,13 @@ Based on your Google Sheet, here's what the system tracks:
 
 ### Must Have:
 - ✅ **Node.js 18+** - Download from nodejs.org
-- ✅ **MySQL 5.7+** - Download from mysql.com
+- ✅ **PostgreSQL 14+** - Download from postgresql.org
 - ✅ **Code Editor** - VS Code recommended
 - ✅ **Git** - Version control (optional but recommended)
 
 ### Nice to Have:
 - **Postman** - API testing tool
-- **MySQL Workbench** - Database management
+- **pgAdmin** - Database management
 - **Thunder Client** - VS Code extension for API testing
 
 ---
@@ -116,20 +116,19 @@ node --version
 npm --version
 ```
 
-### 2. Install MySQL
+### 2. Install PostgreSQL
 ```bash
-# Download from https://mysql.com
-# During installation, set root password
-# Start MySQL service
+# Download from https://www.postgresql.org/download/
+# During installation, set the postgres user's password
 ```
 
 ### 3. Create Database
 ```bash
-# Open MySQL command line
-mysql -u root -p
+# Open the PostgreSQL command line
+psql -U postgres
 
 # Run this command
-CREATE DATABASE provident_loan_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE provident_loan_db;
 ```
 
 ### 4. Setup Backend
@@ -138,7 +137,7 @@ cd backend
 npm install
 cp .env.example .env
 
-# Edit .env file with your MySQL password
+# Edit .env: DATABASE_URL=postgres://postgres:your_password@localhost:5432/provident_loan_db
 # Edit: DB_PASSWORD=your_password
 
 # Start backend
@@ -253,7 +252,7 @@ curl http://localhost:5000/api/health
 - **Node.js Docs**: https://nodejs.org/docs/
 - **Express.js Docs**: https://expressjs.com/
 - **React Docs**: https://react.dev/
-- **MySQL Docs**: https://dev.mysql.com/doc/
+- **PostgreSQL Docs**: https://www.postgresql.org/docs/
 - **Sequelize ORM**: https://sequelize.org/
 
 ---
@@ -261,7 +260,7 @@ curl http://localhost:5000/api/health
 ## ✅ Checklist Before Starting
 
 - [ ] Node.js installed (node --version)
-- [ ] MySQL installed (mysql -V)
+- [ ] PostgreSQL installed (psql --version)
 - [ ] Code editor ready (VS Code)
 - [ ] Read README.md
 - [ ] Read SYSTEM_ARCHITECTURE.md

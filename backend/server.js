@@ -95,7 +95,7 @@ const startServer = async () => {
     app.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV}`);
-      console.log(`Database: ${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`);
+      console.log('Database: PostgreSQL');
     });
   } catch (error) {
     console.error('Unable to start server:', error);

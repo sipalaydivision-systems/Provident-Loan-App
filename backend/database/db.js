@@ -1,28 +1,21 @@
 const { Sequelize, DataTypes, Op } = require('sequelize');
 
 const connectionString = process.env.DATABASE_URL || process.env.DB_URL;
-// Dialect follows the connection string (postgres:// or postgresql:// → Postgres), else DB_DIALECT, else MySQL.
-const dialect = process.env.DB_DIALECT
-  || (connectionString && /^postgres(ql)?:/i.test(connectionString) ? 'postgres' : 'mysql');
-const isPostgres = dialect === 'postgres';
-// Postgres LIKE is case-sensitive; MySQL's default collation is not. Use ILIKE on Postgres.
-const LIKE = isPostgres ? Op.iLike : Op.like;
-const dialectOptions = isPostgres
-  ? {}
-  : { decimalNumbers: true, charset: 'utf8mb4' };
+const dialect = 'postgres';
+// Postgres LIKE is case-sensitive, so name searches use ILIKE.
+const LIKE = Op.iLike;
 
 const sequelize = connectionString
-  ? new Sequelize(connectionString, { dialect, logging: false, dialectOptions })
+  ? new Sequelize(connectionString, { dialect, logging: false })
   : new Sequelize(
       process.env.DB_NAME || 'provident_loan',
-      process.env.DB_USER || (isPostgres ? 'postgres' : 'root'),
-      process.env.DB_PASS || '',
+      process.env.DB_USER || 'postgres',
+      process.env.DB_PASSWORD || process.env.DB_PASS || '',
       {
         host: process.env.DB_HOST || '127.0.0.1',
-        port: process.env.DB_PORT || (isPostgres ? 5432 : 3306),
+        port: process.env.DB_PORT || 5432,
         dialect,
-        logging: false,
-        dialectOptions
+        logging: false
       }
     );
 

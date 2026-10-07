@@ -37,8 +37,23 @@ const MONTH_NAMES = {
 };
 
 function parseDate(str) {
-  if (!str || !str.trim()) return null;
-  const s = String(str).trim();
+  // Already a date (the .xlsx parser converts dates before the import loop) → keep it if valid.
+  if (str instanceof Date) return isNaN(str) ? null : str;
+  // Excel serial number (days since 1899-12-30)
+  if (typeof str === 'number') return str > 0 ? new Date(Math.round((str - 25569) * 86400000)) : null;
+  if (!str || !String(str).trim()) return null;
+  const d0 = parseDateText(String(str).trim());
+  return d0 && !isNaN(d0) ? d0 : null;
+}
+
+function parseDateText(s) {
+  // "Nov-2024", "Jun-2025", "Oct-23"
+  let mm = s.match(/^([A-Za-z]+)[-\s]+(\d{2}|\d{4})$/);
+  if (mm) {
+    const mo = MONTH_NAMES[mm[1].toLowerCase()] || MONTH_NAMES[mm[1].toLowerCase().slice(0, 3)];
+    const yr = mm[2].length === 2 ? 2000 + parseInt(mm[2], 10) : parseInt(mm[2], 10);
+    if (mo) return new Date(`${yr}-${String(mo).padStart(2, '0')}-01`);
+  }
   // MM/DD/YYYY
   let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) return new Date(`${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`);
@@ -935,19 +950,20 @@ exports.getAllLedgerEntries = async (req, res) => {
  */
 exports.recordPayment = async (req, res) => {
   try {
-    const {
-      employee_number,
-      loan_id,
-      amount_paid,
-      payment_date,
-      reference_number,
-      notes
-    } = req.body;
+    const { employee_number, payment_date, reference_number } = req.body;
+    // The Payments page sends `amount`/`remarks` and no loan_id; the ledger page sends `amount_paid`/`notes`/`loan_id`.
+    const amount_paid = req.body.amount_paid ?? req.body.amount;
+    const notes = req.body.notes ?? req.body.remarks;
+    let loan_id = req.body.loan_id;
+    if (!loan_id && employee_number) {
+      const latest = await db.findLoanByEmployeeNumber(employee_number);
+      if (latest && Number(latest.loan_balance) > 0) loan_id = latest.id;
+    }
 
     if (!employee_number || !loan_id || !amount_paid) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required fields: employee_number, loan_id, amount_paid'
+        error: 'Missing required fields: employee_number, loan_id, amount_paid', message: 'Select an employee with an active loan and enter the amount'
       });
     }
 
@@ -1124,7 +1140,9 @@ exports.importEmployees = async (req, res) => {
       const content = req.file.buffer.toString('utf8');
       rawText = content;
       const csvRows = parseCSVText(content);
-      parsedRows = rowsFromCSV(csvRows);
+      // A CSV downloaded from the Provident Fund Google Sheet has the same layout as the .xlsx file.
+      parsedRows = rowsFromProvidentXLSX(csvRows);
+      if (parsedRows.length === 0) parsedRows = rowsFromCSV(csvRows);
     }
 
     if (parsedRows.length === 0) {
@@ -1185,7 +1203,8 @@ exports.importEmployees = async (req, res) => {
             check_number:         row.check_number   || null,
             check_date:           parseDate(row.check_date),
             effective_date:       parseDate(row.effective_date),          // 1st date after LEDGER
-            termination_date:     parseDate(row.termination_date),        // 2nd date after LEDGER
+            termination_date:     parseDate(row.termination_date)         // 2nd date after LEDGER
+                                  || db.computeTerminationDate(parseDate(row.effective_date), noOfMonths),
             loan_amount:          loanAmt,
             no_of_months:         noOfMonths || 0,
             monthly_amortization: monthlyAmort,

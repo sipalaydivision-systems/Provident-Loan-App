@@ -265,7 +265,7 @@ Admin Portal                          Employee Portal
 
 - **Backend**: Node.js + Express.js
 - **Frontend**: React/Next.js
-- **Database**: PostgreSQL or MySQL
+- **Database**: PostgreSQL
 - **Authentication**: JWT
 - **ORM**: Sequelize or TypeORM
 - **Validation**: Joi or Zod

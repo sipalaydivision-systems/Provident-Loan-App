@@ -1,248 +1,71 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { employeeAPI } from '../lib/api';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { portalAPI } from '../lib/api';
+import { Alert, Btn, Field, inputCls, errMsg } from '../lib/ui';
+import Calculator from './Calculator';
 
-export default function EmployeePortal() {
-  const [searchType, setSearchType] = useState('number');
-  const [formData, setFormData] = useState({ employee_number: '', first_name: '', last_name: '' });
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+export default function EmployeePortalLogin() {
+  const router = useRouter();
+  const [mode, setMode] = useState('login');
+  const [f, setF] = useState({ employee_number: '', password: '', last_name: '', code: '', confirm: '' });
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (localStorage.getItem('portal_token')) router.replace('/employee/home'); }, [router]);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleSearch = async (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
-    setResult(null);
-
+    setErr('');
+    if (mode === 'activate' && f.password !== f.confirm) { setErr('Passwords do not match.'); return; }
+    setBusy(true);
     try {
-      let response;
-      response = await employeeAPI.lookup(formData.employee_number.trim(), formData.last_name.trim());
-      // Normalize lookup response to match expected shape: { data: { employee, loan, recentPayments } }
-      if (response.data && !response.data.data) {
-        response = { data: { data: { employee: response.data.employee, loan: response.data.loan, recentPayments: response.data.recentPayments } } };
-      }
-      setResult(response.data);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Search failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+      const r = mode === 'login'
+        ? await portalAPI.login({ employee_number: f.employee_number, password: f.password })
+        : await portalAPI.activate({ employee_number: f.employee_number, last_name: f.last_name, code: f.code, password: f.password });
+      localStorage.setItem('portal_token', r.data.data.token);
+      router.replace('/employee/home');
+    } catch (x) { setErr(errMsg(x)); } finally { setBusy(false); }
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
-      {/* Background effects */}
-      <div className="fixed top-0 left-0 w-96 h-96 bg-purple-500/10 rounded-full mix-blend-screen filter blur-3xl opacity-20 pointer-events-none"></div>
-      <div className="fixed bottom-0 right-0 w-96 h-96 bg-cyan-500/10 rounded-full mix-blend-screen filter blur-3xl opacity-20 pointer-events-none"></div>
-
-      {/* Header */}
-      <header className="border-b border-slate-700/50 bg-slate-900/40 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-          <Link href="/" className="text-slate-400 hover:text-slate-200 text-sm font-semibold transition-colors flex items-center gap-2">
-            <span>←</span>
-            <span>Back to Home</span>
-          </Link>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">
-            Employee Portal
-          </h1>
-          <div className="w-24"></div>
+    <main className="min-h-screen bg-slate-50">
+      <header className="border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded bg-blue-800 text-xs font-bold text-white">PF</span>
+          <div className="leading-tight"><p className="text-sm font-semibold">DepEd Provident Fund – Employee Portal</p><p className="text-xs text-slate-500">Schools Division Office of Sipalay City · Accounting Section</p></div>
+          <Link href="/" className="ml-auto text-sm text-slate-600 hover:underline">Home</Link>
         </div>
       </header>
-
-      <div className="relative z-10 max-w-3xl mx-auto px-6 py-12">
-        {/* Search Form */}
-        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/50 rounded-2xl p-8 mb-8 backdrop-blur-xl">
-          <h2 className="text-3xl font-bold text-white mb-2">Search Your Loan</h2>
-          <p className="text-slate-400 mb-8">Enter your employee information to view your provident loan details</p>
-
-          <form onSubmit={handleSearch} className="space-y-6">
-            {searchType === 'number' ? (
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-200">
-                  Employee Number
-                </label>
-                <div className="relative group">
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-500/0 to-cyan-500/0 group-focus-within:from-purple-500/20 group-focus-within:to-cyan-500/20 rounded-lg transition-all duration-300"></div>
-                  <input
-                    type="text"
-                    name="employee_number"
-                    value={formData.employee_number}
-                    onChange={handleInputChange}
-                    placeholder="e.g., 4261248"
-                    className="relative w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 transition-colors duration-200"
-                    required
-                  />
-                </div>
-              </div>
-            ) : null}
-            {searchType === 'number' ? (
-              <div className="space-y-2">
-                <label className="block text-sm font-semibold text-slate-200">
-                  Last Name
-                </label>
-                <input
-                  type="text"
-                  name="last_name"
-                  value={formData.last_name}
-                  onChange={handleInputChange}
-                  placeholder="As written in your service record"
-                  className="relative w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 transition-colors duration-200"
-                  required
-                />
-              </div>
-            ) : (
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-200">
-                    First Name
-                  </label>
-                  <div className="relative group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/0 to-cyan-500/0 group-focus-within:from-purple-500/20 group-focus-within:to-cyan-500/20 rounded-lg transition-all duration-300"></div>
-                    <input
-                      type="text"
-                      name="first_name"
-                      value={formData.first_name}
-                      onChange={handleInputChange}
-                      placeholder="First name"
-                      className="relative w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 transition-colors duration-200"
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-semibold text-slate-200">
-                    Last Name
-                  </label>
-                  <div className="relative group">
-                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/0 to-cyan-500/0 group-focus-within:from-purple-500/20 group-focus-within:to-cyan-500/20 rounded-lg transition-all duration-300"></div>
-                    <input
-                      type="text"
-                      name="last_name"
-                      value={formData.last_name}
-                      onChange={handleInputChange}
-                      placeholder="Last name"
-                      className="relative w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 transition-colors duration-200"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4 flex items-start gap-3">
-                <span className="text-red-400 text-lg leading-none">⚠️</span>
-                <p className="text-red-300 text-sm">{error}</p>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-lg bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-700 hover:to-cyan-700 disabled:from-slate-600 disabled:to-slate-600 text-white font-semibold transition-all duration-300 hover:shadow-lg hover:shadow-purple-500/25 flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  Searching...
-                </>
-              ) : (
-                <>
-                  Search
-                  <span>→</span>
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Results */}
-        {result && result.data && (
-          <div className="space-y-6">
-            {/* Employee Info Card */}
-            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/50 rounded-2xl p-8 backdrop-blur-xl">
-              <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-6">Employee Information</h3>
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-slate-400">Employee Number</p>
-                  <p className="text-2xl font-bold text-white font-mono">{result.data.employee?.employee_number}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-slate-400">Full Name</p>
-                  <p className="text-2xl font-bold text-white">
-                    {result.data.employee?.first_name} {result.data.employee?.last_name}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-slate-400">Position</p>
-                  <p className="text-white">{result.data.employee?.position}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-slate-400">Station</p>
-                  <p className="text-white">{result.data.employee?.station}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Loan Details Card */}
-            <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/50 rounded-2xl p-8 backdrop-blur-xl">
-              <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-6">Loan Details</h3>
-              <div className="grid md:grid-cols-2 gap-8">
-                <div className="bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-xl p-6">
-                  <p className="text-xs font-semibold text-slate-400 mb-2">Total Loan Amount</p>
-                  <p className="text-3xl font-bold text-white">₱ {result.data.loan?.loan_amount?.toLocaleString()}</p>
-                </div>
-                <div className="bg-gradient-to-br from-emerald-500/10 to-cyan-500/10 border border-emerald-500/20 rounded-xl p-6">
-                  <p className="text-xs font-semibold text-slate-400 mb-2">Current Balance</p>
-                  <p className="text-3xl font-bold text-emerald-400">₱ {result.data.loan?.loan_balance?.toLocaleString()}</p>
-                </div>
-                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 rounded-xl p-6">
-                  <p className="text-xs font-semibold text-slate-400 mb-2">Monthly Amortization</p>
-                  <p className="text-2xl font-bold text-white">₱ {result.data.loan?.monthly_amortization?.toLocaleString()}</p>
-                </div>
-                <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
-                  <p className="text-xs font-semibold text-slate-400 mb-2">Status</p>
-                  <div className="flex items-center gap-2">
-                    <span className={`w-2.5 h-2.5 rounded-full ${result.data.loan?.status === 'active' ? 'bg-emerald-400' : 'bg-slate-400'}`}></span>
-                    <p className="text-lg font-bold text-white uppercase">{result.data.loan?.status}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Recent Payments */}
-            {result.data.recentPayments && result.data.recentPayments.length > 0 && (
-              <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/30 border border-slate-700/50 rounded-2xl p-8 backdrop-blur-xl">
-                <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-6">Recent Payments</h3>
-                <div className="space-y-3">
-                  {result.data.recentPayments.slice(0, 5).map((payment, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-4 bg-slate-800/30 border border-slate-700/30 rounded-lg hover:border-emerald-500/30 transition-colors"
-                    >
-                      <span className="text-slate-300">
-                        {new Date(payment.date_of_deduction || payment.date || payment.payment_date).toLocaleDateString('en-US', {
-                          year: 'numeric',
-                          month: 'short',
-                          day: 'numeric'
-                        })}
-                      </span>
-                      <span className="text-emerald-400 font-bold">₱ {(payment.monthly_payment_amount || payment.amount_paid || payment.amount)?.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+      <div className="mx-auto grid max-w-5xl gap-6 px-4 py-8 lg:grid-cols-[380px_1fr]">
+        <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="mb-4 flex rounded-md bg-slate-100 p-1 text-sm">
+            {[['login', 'Sign in'], ['activate', 'Activate account']].map(([k, l]) => (
+              <button key={k} onClick={() => { setMode(k); setErr(''); }} className={`flex-1 rounded px-3 py-1.5 ${mode === k ? 'bg-white font-medium shadow-sm' : 'text-slate-600'}`}>{l}</button>
+            ))}
           </div>
-        )}
+          <form onSubmit={submit} className="space-y-3">
+            <Field label="Employee number"><input className={inputCls} value={f.employee_number} onChange={set('employee_number')} inputMode="numeric" autoComplete="username" required /></Field>
+            {mode === 'activate' && <>
+              <Field label="Last name"><input className={inputCls} value={f.last_name} onChange={set('last_name')} required /></Field>
+              <Field label="Activation code" hint="From the slip given by the Accounting Section"><input className={`${inputCls} font-mono uppercase tracking-widest`} value={f.code} onChange={set('code')} required /></Field>
+            </>}
+            <Field label={mode === 'activate' ? 'Create a password' : 'Password'} hint={mode === 'activate' ? 'At least 8 characters with letters and numbers' : ''}>
+              <input type="password" className={inputCls} value={f.password} onChange={set('password')} autoComplete={mode === 'activate' ? 'new-password' : 'current-password'} required />
+            </Field>
+            {mode === 'activate' && <Field label="Confirm password"><input type="password" className={inputCls} value={f.confirm} onChange={set('confirm')} autoComplete="new-password" required /></Field>}
+            <Alert>{err}</Alert>
+            <Btn type="submit" className="w-full justify-center" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Activate and sign in'}</Btn>
+          </form>
+          <p className="mt-4 text-xs text-slate-500">No account yet? Ask the Accounting Section for your activation code. Forgot your password? The Accounting Section can issue a new code.</p>
+        </section>
+        <section>
+          <h2 className="mb-1 text-lg font-semibold text-slate-900">Loan calculator</h2>
+          <p className="mb-4 text-sm text-slate-600">DepEd Provident Fund: 6% per annum on the diminishing balance, 12 to 60 months, up to ₱100,000 (multi-purpose).</p>
+          <Calculator />
+        </section>
       </div>
     </main>
   );

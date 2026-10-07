@@ -12,6 +12,8 @@ const { initializeDatabase } = require('./database/db');
 const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const employeeRoutes = require('./routes/employee.routes');
+const ledgerRoutes = require('./routes/ledger.routes');
+const portalRoutes = require('./routes/portal.routes');
 
 const app = express();
 // Railway terminates TLS at its proxy; trust it so rate limiting sees real client IPs.
@@ -61,7 +63,9 @@ app.get('/api/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/admin', ledgerRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/portal', portalRoutes);
 app.use('/api/employee', employeeRoutes);
 
 // ==================== Error Handling ====================

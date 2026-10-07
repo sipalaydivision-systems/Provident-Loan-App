@@ -59,7 +59,7 @@ export default function AdminLogin() {
       localStorage.setItem('user', JSON.stringify(response.data.data.user));
 
       // Redirect to dashboard
-      router.push('/admin/dashboard');
+      router.push('/admin/overview');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed. Check your username and password.');
     } finally {

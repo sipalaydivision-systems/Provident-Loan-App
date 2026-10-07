@@ -13,6 +13,8 @@ Provident Fund loan register and subsidiary ledger for the **Accounting Section,
 
 Loan approval remains with the SDS (Multi-Purpose) / Regional Director (Additional) through the PF Division Board Secretariat; this system records approved loans, deductions and balances.
 
+**Features:** ledger cards computed from each loan (diminishing balance, moratoria, payoffs, refunds), SUMMARY with Excel export, monthly payroll posting with upload, stop-deduction / re-loan / maturing / refunds / collections / Annex A reports, application workflow with eligibility checks, printable statement of account and certificate, and an employee portal (activation code, own ledger card, calculator, online application, co-maker consent, notifications). Workbook import migrates the PROVIDENT FUND Google Sheet. See **docs/USER_GUIDE.md**.
+
 ---
 
 ## 🎯 System Overview

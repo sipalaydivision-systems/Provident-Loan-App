@@ -72,16 +72,16 @@ export default function Home() {
                   <div>
                     <h3 className="text-2xl font-bold text-white mb-2">Employee Portal</h3>
                     <p className="text-slate-300 text-sm leading-relaxed">
-                      Search and view your loan information, check payment history, and download statements instantly.
+                      Sign in to see your ledger card, balance and re-loan date, apply for a loan and track its approval.
                     </p>
                   </div>
 
                   <ul className="space-y-2">
                     {[
-                      'Search by Employee Number',
-                      'Search by Name',
-                      'View Real-Time Balance',
-                      'Download Statements'
+                      'My ledger card and balance',
+                      'Loan calculator',
+                      'Apply and track approval',
+                      'Co-maker consent'
                     ].map((item, idx) => (
                       <li key={idx} className="flex items-center gap-2 text-slate-300 text-sm">
                         <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
@@ -111,16 +111,16 @@ export default function Home() {
                   <div>
                     <h3 className="text-2xl font-bold text-white mb-2">Admin Dashboard</h3>
                     <p className="text-slate-300 text-sm leading-relaxed">
-                      Manage employees, loans, record payments, and generate comprehensive reports and analytics.
+                      Accounting Section: ledger cards, monthly payroll posting, applications and reports.
                     </p>
                   </div>
 
                   <ul className="space-y-2">
                     {[
-                      'Employee Management',
-                      'Loan Administration',
-                      'Payment Recording',
-                      'Advanced Reporting'
+                      'Ledger cards and summary',
+                      'Monthly payroll posting',
+                      'Application workflow',
+                      'Reports and Annex A'
                     ].map((item, idx) => (
                       <li key={idx} className="flex items-center gap-2 text-slate-300 text-sm">
                         <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>

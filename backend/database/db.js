@@ -115,7 +115,11 @@ const Employee = sequelize.define(
     email: { type: DataTypes.STRING, allowNull: true },
     phone: { type: DataTypes.STRING, allowNull: true },
     status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'active' },
-    date_hired: { type: DataTypes.DATE, allowNull: true }
+    date_hired: { type: DataTypes.DATE, allowNull: true },
+    school: { type: DataTypes.STRING, allowNull: true },
+    birth_date: { type: DataTypes.DATEONLY, allowNull: true },
+    appointment_status: { type: DataTypes.STRING, allowNull: true, defaultValue: 'permanent' },
+    monthly_basic_salary: { type: DataTypes.FLOAT, allowNull: true }
   },
   {
     tableName: 'employees',
@@ -142,8 +146,16 @@ const Loan = sequelize.define(
     remarks: { type: DataTypes.TEXT, allowNull: true },
     reason: { type: DataTypes.TEXT, allowNull: true },
     approved_by: { type: DataTypes.STRING, allowNull: true },
-    interest_rate: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 0 },
-    notes: { type: DataTypes.STRING, allowNull: true }
+    interest_rate: { type: DataTypes.FLOAT, allowNull: true, defaultValue: 6 },
+    notes: { type: DataTypes.TEXT, allowNull: true },
+    loan_type: { type: DataTypes.STRING, allowNull: false, defaultValue: 'multi_purpose' },
+    date_granted: { type: DataTypes.DATEONLY, allowNull: true },
+    previous_loan_id: { type: DataTypes.INTEGER, allowNull: true },
+    outstanding_deducted: { type: DataTypes.FLOAT, allowNull: true },
+    net_proceeds: { type: DataTypes.FLOAT, allowNull: true },
+    application_id: { type: DataTypes.INTEGER, allowNull: true },
+    source: { type: DataTypes.STRING, allowNull: true },
+    application_no: { type: DataTypes.STRING, allowNull: true }
   },
   {
     tableName: 'loans',
@@ -171,7 +183,12 @@ const LedgerEntry = sequelize.define(
     paid_status: { type: DataTypes.BOOLEAN, allowNull: true },
     monthly_payment_amount: { type: DataTypes.FLOAT, allowNull: true },
     paid_months: { type: DataTypes.INTEGER, allowNull: true },
-    balance: { type: DataTypes.FLOAT, allowNull: true }
+    balance: { type: DataTypes.FLOAT, allowNull: true },
+    // deduction | or_payment | moratorium | prepayment | payoff | renewal_offset | adjustment | refund | opening
+    entry_type: { type: DataTypes.STRING, allowNull: false, defaultValue: 'deduction' },
+    months_covered: { type: DataTypes.INTEGER, allowNull: true },
+    period: { type: DataTypes.STRING(7), allowNull: true }, // 'YYYY-MM' payroll month
+    payroll_batch: { type: DataTypes.STRING, allowNull: true }
   },
   {
     tableName: 'ledger_entries',
@@ -197,6 +214,60 @@ const AuditLog = sequelize.define(
   }
 );
 
+const Setting = sequelize.define('Setting', {
+  key: { type: DataTypes.STRING, allowNull: false, unique: true },
+  value: { type: DataTypes.JSON, allowNull: true }
+}, { tableName: 'settings', timestamps: true, underscored: true });
+
+const Moratorium = sequelize.define('Moratorium', {
+  name: { type: DataTypes.STRING, allowNull: false },
+  start_month: { type: DataTypes.STRING(7), allowNull: false },
+  end_month: { type: DataTypes.STRING(7), allowNull: false },
+  date_occurred: { type: DataTypes.DATEONLY, allowNull: true },
+  reference: { type: DataTypes.TEXT, allowNull: true }
+}, { tableName: 'moratoria', timestamps: true, underscored: true });
+
+const LoanApplication = sequelize.define('LoanApplication', {
+  application_no: { type: DataTypes.STRING, allowNull: true, unique: true },
+  employee_number: { type: DataTypes.STRING, allowNull: false },
+  loan_type: { type: DataTypes.STRING, allowNull: false, defaultValue: 'multi_purpose' },
+  purpose: { type: DataTypes.STRING, allowNull: true },
+  purpose_details: { type: DataTypes.TEXT, allowNull: true },
+  amount: { type: DataTypes.FLOAT, allowNull: false },
+  months: { type: DataTypes.INTEGER, allowNull: false },
+  co_maker_employee_number: { type: DataTypes.STRING, allowNull: true },
+  co_maker_consent: { type: DataTypes.STRING, allowNull: false, defaultValue: 'pending' }, // pending|given|declined
+  monthly_basic_salary: { type: DataTypes.FLOAT, allowNull: true },
+  other_deductions: { type: DataTypes.FLOAT, allowNull: true },
+  computation: { type: DataTypes.JSON, allowNull: true },
+  checks: { type: DataTypes.JSON, allowNull: true },
+  status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'submitted' },
+  history: { type: DataTypes.JSON, allowNull: true },
+  submitted_by: { type: DataTypes.STRING, allowNull: false, defaultValue: 'admin' },
+  loan_id: { type: DataTypes.INTEGER, allowNull: true },
+  check_number: { type: DataTypes.STRING, allowNull: true },
+  check_date: { type: DataTypes.DATEONLY, allowNull: true },
+  first_deduction_month: { type: DataTypes.STRING(7), allowNull: true },
+  remarks: { type: DataTypes.TEXT, allowNull: true }
+}, { tableName: 'loan_applications', timestamps: true, underscored: true });
+
+const EmployeeAccount = sequelize.define('EmployeeAccount', {
+  employee_number: { type: DataTypes.STRING, allowNull: false, unique: true },
+  password_hash: { type: DataTypes.STRING, allowNull: true },
+  activation_code_hash: { type: DataTypes.STRING, allowNull: true },
+  activation_expires: { type: DataTypes.DATE, allowNull: true },
+  last_login: { type: DataTypes.DATE, allowNull: true },
+  is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }
+}, { tableName: 'employee_accounts', timestamps: true, underscored: true });
+
+const Notification = sequelize.define('Notification', {
+  employee_number: { type: DataTypes.STRING, allowNull: false },
+  title: { type: DataTypes.STRING, allowNull: false },
+  body: { type: DataTypes.TEXT, allowNull: true },
+  link: { type: DataTypes.STRING, allowNull: true },
+  read_at: { type: DataTypes.DATE, allowNull: true }
+}, { tableName: 'notifications', timestamps: true, underscored: true });
+
 Employee.hasMany(Loan, { foreignKey: 'employee_number', sourceKey: 'employee_number' });
 Loan.belongsTo(Employee, { foreignKey: 'employee_number', targetKey: 'employee_number' });
 Employee.hasMany(LedgerEntry, { foreignKey: 'employee_number', sourceKey: 'employee_number' });
@@ -207,6 +278,9 @@ const initializeDatabase = async () => {
   await sequelize.authenticate();
   await sequelize.sync({ alter: true });
   await ensureSeedData();
+  await require('../services/settings').seedReferenceData();
+  // Re-derive cached balances so every loan reflects the current engine and settings.
+  await ledger().refreshAll();
 };
 
 const ensureSeedData = async () => {
@@ -323,33 +397,44 @@ const getLoanById = async (loanId) => {
   return Loan.findByPk(loanId);
 };
 
+const ledger = () => require('../services/ledgerService');
 const createLoan = async (payload) => {
   const employee = await getEmployeeByNumber(payload.employee_number);
   if (!employee) {
     throw new Error('Employee not found');
   }
-
   const loanAmount = parseFloat(payload.loan_amount);
   const months = parseInt(payload.no_of_months, 10);
   const annualRate = PF_ANNUAL_RATE;
-  const monthlyAmortization = computeAmortization(loanAmount, months, annualRate);
-
-  return Loan.create({
+  const loan = await Loan.create({
     employee_number: payload.employee_number,
+    loan_type: payload.loan_type || 'multi_purpose',
     loan_amount: loanAmount,
     no_of_months: months,
-    monthly_amortization: monthlyAmortization,
+    monthly_amortization: computeAmortization(loanAmount, months, annualRate),
     loan_application_date: payload.loan_application_date || new Date(),
+    application_no: payload.application_no || null,
+    check_number: payload.check_number || null,
+    check_date: payload.check_date || null,
+    date_granted: payload.date_granted || payload.check_date || null,
+    // effective_date = first payroll deduction month
     effective_date: payload.effective_date || new Date(),
-    termination_date: computeTerminationDate(payload.effective_date || new Date(), months),
     loan_balance: loanAmount,
     no_of_months_paid: 0,
     status: 'NOT QUALIFIED FOR RENEWAL',
     interest_rate: annualRate,
     reason: payload.reason || 'Personal needs',
     approved_by: payload.approved_by || 'System Admin',
-    remarks: payload.remarks || null
+    remarks: payload.remarks || null,
+    notes: payload.notes || null,
+    previous_loan_id: payload.previous_loan_id || null,
+    outstanding_deducted: payload.outstanding_deducted ?? null,
+    net_proceeds: payload.net_proceeds ?? null,
+    application_id: payload.application_id || null,
+    source: payload.source || 'manual'
   });
+  await ledger().refreshLoan(loan);
+  return loan.reload();
 };
 
 const updateLoan = async (loanId, updates) => {
@@ -362,6 +447,7 @@ const updateLoan = async (loanId, updates) => {
 const deleteLoan = async (loanId) => {
   const loan = await getLoanById(loanId);
   if (!loan) return null;
+  await LedgerEntry.destroy({ where: { loan_id: loan.id } });
   await loan.destroy();
   return loan;
 };
@@ -389,115 +475,74 @@ const getLedgerEntries = async ({ page = 1, limit = 20, employee_number, month, 
   return { count, rows };
 };
 
-const recordPayment = async ({ employee_number, loan_id, amount_paid, payment_date, reference_number, notes }) => {
+const recordPayment = async ({ employee_number, loan_id, amount_paid, payment_date, reference_number, notes, entry_type, period }) => {
   const loan = await getLoanById(loan_id);
   if (!loan) {
     throw new Error('Loan not found');
   }
-
-  const payment = round2(parseFloat(amount_paid));
-  const previousBalance = round2(parseFloat(loan.loan_balance));
-  // Diminishing balance: interest is charged on the outstanding principal only.
-  const monthlyRate = (Number(loan.interest_rate) || PF_ANNUAL_RATE) / 100 / 12;
-  const interest = round2(previousBalance * monthlyRate);
-  const principalPaid = round2(Math.min(previousBalance, payment - interest));
-  const newBalance = round2(Math.max(0, previousBalance - principalPaid));
-  const paidMonths = loan.no_of_months_paid + 1;
-  const updatedLoan = await loan.update({
-    loan_balance: newBalance,
-    no_of_months_paid: paidMonths,
-    status: computeRenewalStatus(loan.loan_amount, newBalance),
-    termination_date: newBalance <= 0 ? new Date() : loan.termination_date
+  // Default period: the month of the payment date, else the next month due on the card.
+  let p = period || (payment_date ? ledger().toPeriodSafe(payment_date) : null);
+  if (!p) {
+    const card = await ledger().cardFor(loan);
+    p = card.summary.next_due_period || ledger().toPeriodSafe(new Date());
+  }
+  const { entry, card } = await ledger().addEntry(loan.id, {
+    entry_type: entry_type || 'deduction',
+    period: p,
+    amount: amount_paid,
+    reference_number,
+    notes,
+    payment_date
   });
-
-  const ledgerEntry = await LedgerEntry.create({
-    employee_number,
-    loan_id,
-    payment_date: payment_date || new Date(),
-    amount_paid: payment,
-    previous_balance: previousBalance,
-    new_balance: newBalance,
-    reference_number: reference_number || `PAY-${Date.now()}`,
-    recorded_by: 'System Admin',
-    notes: notes || '',
-    payment_month: payment_date ? new Date(payment_date).getMonth() + 1 : null,
-    date_of_deduction: payment_date ? new Date(payment_date) : null,
-    payment_with_interest: interest,
-    principal_payments: principalPaid,
-    paid_status: true,
-    monthly_payment_amount: payment,
-    paid_months: paidMonths,
-    balance: newBalance
-  });
-
-  return { ledgerEntry, updatedLoan };
+  const row = card.rows.find((r) => r.entry_id === entry.id) || {};
+  await LedgerEntry.update({
+    payment_with_interest: row.interest ?? null,
+    principal_payments: row.principal ?? null,
+    balance: row.balance ?? null,
+    new_balance: row.balance ?? null,
+    paid_months: row.months_paid ?? null
+  }, { where: { id: entry.id } });
+  const ledgerEntry = await LedgerEntry.findByPk(entry.id);
+  const updatedLoan = await Loan.findByPk(loan.id);
+  return { ledgerEntry, updatedLoan, card };
 };
 
 // Direct loan insert that preserves all values from an import (no recalculation)
 const createLoanDirect = async (payload) => {
+  // Summary-sheet import (no monthly history): the loan starts at its first deduction month and an
+  // 'opening' entry carries the balance and months paid from the sheet.
   const loanAmount = parseFloat(payload.loan_amount) || 0;
   const parsedBalance = parseFloat(payload.loan_balance);
   const importedBalance = Number.isFinite(parsedBalance) ? parsedBalance : loanAmount;
-  // Renewal status is recomputed from the 30% rule; the sheet's own label is kept in remarks for audit.
-  const computedStatus = computeRenewalStatus(loanAmount, importedBalance);
-  const sheetStatus = (payload.status || '').toString().trim();
-  const remarkParts = [payload.remarks || null];
-  if (sheetStatus && sheetStatus.toUpperCase() !== computedStatus.toUpperCase()) {
-    remarkParts.push(`Sheet status: ${sheetStatus}`);
-  }
-  if (importedBalance < 0) remarkParts.push('Negative balance in source (possible over-deduction)');
-  const importRemarks = remarkParts.filter(Boolean).join(' | ') || null;
-  return Loan.create({
+  const loan = await Loan.create({
     employee_number: payload.employee_number,
     loan_amount: loanAmount,
     no_of_months: parseInt(payload.no_of_months) || 0,
     monthly_amortization: parseFloat(payload.monthly_amortization) || computeAmortization(loanAmount, payload.no_of_months),
     loan_application_date: payload.loan_application_date || null,
+    application_no: payload.application_no || null,
     check_number: payload.check_number || null,
     check_date: payload.check_date || null,
+    date_granted: payload.check_date || null,
     effective_date: payload.effective_date || null,
     termination_date: payload.termination_date || null,
     loan_balance: importedBalance,
     no_of_months_paid: parseInt(payload.no_of_months_paid) || 0,
-    status: computedStatus,
-    remarks: importRemarks,
+    status: payload.status || 'active',
+    remarks: payload.remarks || null,
     reason: 'Imported from summary',
     approved_by: 'Import',
     interest_rate: PF_ANNUAL_RATE,
+    source: 'summary_import'
   });
+  return loan;
 };
 
 // Annex A – report on PF borrowers covered by a moratorium (PF National Board of Trustees template).
-const getMoratoriumReport = async (index = PF_MORATORIA.length - 1) => {
-  const m = PF_MORATORIA[index];
-  const loans = await Loan.findAll();
-  const ms = monthIndex(new Date(m.start + 'T00:00:00Z'));
-  const me = monthIndex(new Date(m.end + 'T00:00:00Z'));
-  const affected = [];
-  for (const loan of loans) {
-    if (!loan.effective_date || Number(loan.loan_balance) <= 0) continue;
-    const start = monthIndex(new Date(loan.effective_date));
-    const naturalEnd = start + Number(loan.no_of_months) - 1;
-    const overlap = Math.min(naturalEnd, me) - Math.max(start, ms) + 1;
-    if (overlap <= 0) continue;
-    const deferredMonths = Math.min(overlap, m.months);
-    affected.push({
-      employee_number: loan.employee_number,
-      loan_id: loan.id,
-      monthly_amortization: Number(loan.monthly_amortization),
-      deferred_months: deferredMonths,
-      amount_deferred: round2(Number(loan.monthly_amortization) * deferredMonths)
-    });
-  }
-  return {
-    reference: m.reference,
-    name_of_calamity: 'State of National Energy Emergency (EO No. 110, s. 2026)',
-    date_occurred: '2026-03-24',
-    schedule_of_deferment: `${m.start} to ${m.end}`,
-    borrowers_affected: new Set(affected.map(a => a.employee_number)).size,
-    total_amortizations_deferred: round2(affected.reduce((sum, x) => sum + x.amount_deferred, 0)),
-    details: affected
-  };
+const getMoratoriumReport = async () => {
+  const r = await ledger().reports('annex-a');
+  const m = r.moratoria[r.moratoria.length - 1] || {};
+  return { ...m, details: m.details || [] };
 };
 
 const findLoanByEmployeeNumber = async (employee_number) => {
@@ -558,7 +603,7 @@ const getAllLoans = async () => Loan.findAll({ order: [['created_at', 'DESC']] }
 const getLoansByEmployee = async (employee_number) => {
   return Loan.findAll({
     where: { employee_number },
-    order: [['created_at', 'ASC']]
+    order: [['effective_date', 'ASC'], ['id', 'ASC']]
   });
 };
 
@@ -583,10 +628,7 @@ const getLedgerEntryById = async (id) => {
  * Update a ledger entry and recalculate loan balance accordingly.
  */
 const updateLedgerEntry = async (id, updates) => {
-  const entry = await getLedgerEntryById(id);
-  if (!entry) return null;
-  await entry.update(updates);
-  return entry;
+  return ledger().updateEntry(id, updates);
 };
 
 /**
@@ -595,7 +637,7 @@ const updateLedgerEntry = async (id, updates) => {
 const deleteLedgerEntry = async (id) => {
   const entry = await getLedgerEntryById(id);
   if (!entry) return null;
-  await entry.destroy();
+  await ledger().deleteEntries([entry.id]);
   return entry;
 };
 
@@ -604,7 +646,7 @@ const deleteLedgerEntry = async (id) => {
  * Returns the number of rows deleted.
  */
 const bulkDeleteLedgerEntries = async (ids) => {
-  return LedgerEntry.destroy({ where: { id: { [Op.in]: ids } } });
+  return ledger().deleteEntries(ids);
 };
 
 const getDashboardSummary = async () => {
@@ -641,6 +683,7 @@ const getDashboardSummary = async () => {
 
 module.exports = {
   sequelize,
+  models: { Admin, Employee, Loan, LedgerEntry, AuditLog, Setting, Moratorium, LoanApplication, EmployeeAccount, Notification },
   PF_MORATORIA,
   computeTerminationDate,
   moratoriumMonthsFor,

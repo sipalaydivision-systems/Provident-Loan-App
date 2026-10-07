@@ -1239,44 +1239,37 @@ exports.importEmployees = async (req, res) => {
             results.loansCreated++;
           }
 
-          // ── 3. Ledger entry for months already paid ───────────────────
-          // Maps to: ledger_entries.employee_number, loan_id, amount_paid,
-          //          previous_balance, new_balance, no_of_months_paid,
-          //          reference_number, notes
-          //
-          // We create ONE aggregate entry per loan (representing all payments
-          // made to date) so the Payments section is populated. Skip if a
-          // ledger entry already exists for this loan.
-          if (noOfMonthsPaid > 0) {
+          // ── 3. Opening balance from the summary (no monthly history in this file) ──
+          {
             const loanId = loan.id || loan.dataValues?.id;
             const hasEntries = await db.hasLedgerEntries(loanId);
-            if (!hasEntries) {
-              // total paid = loan_amount − current loan_balance
-              const totalPaid = loanBalance !== null
-                ? Math.max(0, loanAmt - loanBalance)
-                : (monthlyAmort || 0) * noOfMonthsPaid;
-
+            const effective = parseDate(row.effective_date);
+            if (!hasEntries && effective && (noOfMonthsPaid > 0 || loanBalance !== null)) {
+              const E = require('../services/loanEngine');
+              const moratoria = await require('../services/settings').getMoratoria();
+              let p = E.toPeriod(effective);
+              let counted = 0;
+              while (counted < Math.max(noOfMonthsPaid, 1) - 1 || E.inMoratorium(p, moratoria)) {
+                if (!E.inMoratorium(p, moratoria)) counted++;
+                p = E.addMonths(p, 1);
+                if (counted > 600) break;
+              }
               await db.createLedgerEntry({
-                employee_number:        empNum,
-                loan_id:                loanId,
-                payment_date:           parseDate(row.effective_date) || new Date(),
-                amount_paid:            totalPaid > 0 ? totalPaid : (monthlyAmort || 0) * noOfMonthsPaid,
-                previous_balance:       loanAmt,
-                new_balance:            loanBalance !== null ? loanBalance : 0,
-                reference_number:       `IMPORT-${empNum}`,
-                recorded_by:            'Import',
-                notes:                  `Imported summary – ${noOfMonthsPaid} month(s) paid`,
-                payment_month:          null,
-                date_of_deduction:      parseDate(row.effective_date) || null,
-                payment_with_interest:  null,
-                principal_payments:     totalPaid > 0 ? totalPaid : null,
-                paid_status:            true,
-                monthly_payment_amount: monthlyAmort || null,
-                paid_months:            noOfMonthsPaid,
-                balance:                loanBalance !== null ? loanBalance : 0,
+                employee_number: empNum,
+                loan_id: loanId,
+                entry_type: 'opening',
+                period: p,
+                payment_date: E.periodEndDate(p),
+                amount_paid: 0,
+                balance: loanBalance !== null ? Math.max(loanBalance, 0) : loanAmt,
+                paid_months: noOfMonthsPaid,
+                reference_number: `IMPORT-${empNum}`,
+                recorded_by: 'Import',
+                notes: `Opening balance from summary – ${noOfMonthsPaid} month(s) paid`,
               });
               results.ledgerCreated++;
             }
+            await require('../services/ledgerService').refreshLoan(loanId);
           }
         }
       } catch (err) {

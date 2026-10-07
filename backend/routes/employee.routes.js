@@ -31,16 +31,16 @@ const disabled = (req, res) => res.status(403).json({ success: false, message: '
 router.post('/search', disabled);
 
 // GET /api/employee/lookup/:employeeNumber - Get employee loan details
-router.get('/lookup/:employeeNumber', verifyIdentity, employeeController.lookup);
+router.get('/lookup/:employeeNumber', (req, res) => res.status(410).json({ success: false, message: 'Loan details are now in the Employee Portal. Sign in with the activation code from the Accounting Section.' }));
 
 // POST /api/employee/search-by-name - Search by employee name
 router.post('/search-by-name', disabled);
 
 // GET /api/employee/ledger/:employeeNumber - Get detailed ledger card
-router.get('/ledger/:employeeNumber', verifyIdentity, employeeController.getLedger);
+router.get('/ledger/:employeeNumber', (req, res) => res.status(410).json({ success: false, message: 'Loan details are now in the Employee Portal. Sign in with the activation code from the Accounting Section.' }));
 
 // GET /api/employee/statement/:employeeNumber - Generate statement
-router.get('/statement/:employeeNumber', verifyIdentity, employeeController.getStatement);
+router.get('/statement/:employeeNumber', (req, res) => res.status(410).json({ success: false, message: 'Loan details are now in the Employee Portal. Sign in with the activation code from the Accounting Section.' }));
 
 // ==================== PUBLIC INFO ENDPOINTS ====================
 

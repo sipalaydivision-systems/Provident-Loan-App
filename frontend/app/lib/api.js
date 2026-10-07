@@ -112,3 +112,91 @@ export const importAPI = {
 };
 
 export default api;
+
+// ── Ledger-card system (Accounting) ───────────────────────────────────────────
+export const ledgerAPI = {
+  overview: () => api.get('/admin/overview'),
+  recalculate: () => api.post('/admin/recalculate'),
+  card: (employeeNumber) => api.get(`/admin/ledger-cards/${encodeURIComponent(employeeNumber)}`),
+  loanCard: (loanId) => api.get(`/admin/loans/${loanId}/card`),
+  addEntry: (loanId, data) => api.post(`/admin/loans/${loanId}/entries`, data),
+  updateEntry: (id, data) => api.put(`/admin/entries/${id}`, data),
+  deleteEntry: (id) => api.delete(`/admin/entries/${id}`),
+  summary: (params) => api.get('/admin/summary', { params }),
+  payroll: (period) => api.get(`/admin/payroll/${period}`),
+  postPayroll: (period, data) => api.post(`/admin/payroll/${period}/post`, data),
+  uploadPayroll: (period, file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post(`/admin/payroll/${period}/upload`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  report: (kind, params) => api.get(`/admin/reports/${kind}`, { params }),
+  settings: () => api.get('/admin/settings'),
+  saveSettings: (data) => api.put('/admin/settings', data),
+  addMoratorium: (data) => api.post('/admin/moratoria', data),
+  deleteMoratorium: (id) => api.delete(`/admin/moratoria/${id}`),
+  previewWorkbook: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return api.post('/admin/import/ledger-workbook/preview', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  importWorkbook: (file, replace) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('replace', replace ? 'true' : 'false');
+    return api.post('/admin/import/ledger-workbook', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 });
+  },
+  applications: (params) => api.get('/admin/applications', { params }),
+  application: (id) => api.get(`/admin/applications/${id}`),
+  evaluateApplication: (data) => api.post('/admin/applications/evaluate', data),
+  createApplication: (data) => api.post('/admin/applications', data),
+  applicationAction: (id, data) => api.post(`/admin/applications/${id}/action`, data),
+  portalCode: (employeeNumber) => api.post(`/admin/employees/${encodeURIComponent(employeeNumber)}/portal-code`),
+  portalDisable: (employeeNumber) => api.post(`/admin/employees/${encodeURIComponent(employeeNumber)}/portal-disable`),
+};
+
+/** Download an authenticated Excel export (summary or report). */
+export async function downloadExport(path, filename) {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const res = await fetch(`${API_BASE_URL}${path}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error('Export failed');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ── Employee portal (separate session from the admin) ─────────────────────────
+const portal = axios.create({ baseURL: API_BASE_URL, headers: { 'Content-Type': 'application/json' } });
+portal.interceptors.request.use((config) => {
+  const t = typeof window !== 'undefined' ? localStorage.getItem('portal_token') : null;
+  if (t) config.headers.Authorization = `Bearer ${t}`;
+  return config;
+});
+portal.interceptors.response.use((r) => r, (error) => {
+  if (error.response?.status === 401 && typeof window !== 'undefined' && window.location.pathname !== '/employee') {
+    localStorage.removeItem('portal_token');
+    window.location.href = '/employee';
+  }
+  return Promise.reject(error);
+});
+export const portalAPI = {
+  activate: (data) => portal.post('/portal/activate', data),
+  login: (data) => portal.post('/portal/login', data),
+  me: () => portal.get('/portal/me'),
+  notifications: () => portal.get('/portal/me/notifications'),
+  markRead: () => portal.post('/portal/me/notifications/read'),
+  applications: () => portal.get('/portal/me/applications'),
+  previewApplication: (data) => portal.post('/portal/me/applications/preview', data),
+  apply: (data) => portal.post('/portal/me/applications', data),
+  cancelApplication: (id) => portal.post(`/portal/me/applications/${id}/cancel`),
+  coMakerRequests: () => portal.get('/portal/me/co-maker'),
+  coMakerDecision: (id, decision) => portal.post(`/portal/me/co-maker/${id}`, { decision }),
+  calculator: (data) => portal.post('/portal/calculator', data),
+  changePassword: (data) => portal.post('/portal/change-password', data),
+};

@@ -55,6 +55,12 @@ router.get('/employees/:employeeNumber/ledger', authenticateToken, authorizeAdmi
 // ==================== REPORTS ====================
 
 router.get('/report/loan-summary', authenticateToken, authorizeAdmin, reportController.getLoanSummary);
+router.get('/report/moratorium', authenticateToken, authorizeAdmin, async (req, res, next) => {
+  try {
+    const db = require('../database/db');
+    res.json({ success: true, data: await db.getMoratoriumReport() });
+  } catch (e) { next(e); }
+});
 router.get('/report/loan-summary/csv', authenticateToken, authorizeAdmin, reportController.exportLoanSummaryCsv);
 
 // ==================== DASHBOARD ====================

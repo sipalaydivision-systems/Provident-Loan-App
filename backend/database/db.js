@@ -1,29 +1,28 @@
 const { Sequelize, DataTypes, Op } = require('sequelize');
 
 const connectionString = process.env.DATABASE_URL || process.env.DB_URL;
-const dialect = process.env.DB_DIALECT || 'mysql';
+// Dialect follows the connection string (postgres:// or postgresql:// → Postgres), else DB_DIALECT, else MySQL.
+const dialect = process.env.DB_DIALECT
+  || (connectionString && /^postgres(ql)?:/i.test(connectionString) ? 'postgres' : 'mysql');
+const isPostgres = dialect === 'postgres';
+// Postgres LIKE is case-sensitive; MySQL's default collation is not. Use ILIKE on Postgres.
+const LIKE = isPostgres ? Op.iLike : Op.like;
+const dialectOptions = isPostgres
+  ? {}
+  : { decimalNumbers: true, charset: 'utf8mb4' };
 
 const sequelize = connectionString
-  ? new Sequelize(connectionString, {
-      dialect,
-      logging: false,
-      dialectOptions: {
-        decimalNumbers: true
-      }
-    })
+  ? new Sequelize(connectionString, { dialect, logging: false, dialectOptions })
   : new Sequelize(
       process.env.DB_NAME || 'provident_loan',
-      process.env.DB_USER || 'root',
+      process.env.DB_USER || (isPostgres ? 'postgres' : 'root'),
       process.env.DB_PASS || '',
       {
         host: process.env.DB_HOST || '127.0.0.1',
-        port: process.env.DB_PORT || 3306,
+        port: process.env.DB_PORT || (isPostgres ? 5432 : 3306),
         dialect,
         logging: false,
-        dialectOptions: {
-          decimalNumbers: true,
-          charset: 'utf8mb4'
-        }
+        dialectOptions
       }
     );
 
@@ -44,6 +43,42 @@ const computeAmortization = (principal, months, annualRate = PF_ANNUAL_RATE) => 
   // DepEd PF amortization tables round UP to the next centavo (e.g. P100,000 x 60 mos = P1,933.29).
   const exact = (P * r) / (1 - Math.pow(1 + r, -n));
   return Math.ceil(exact * 100 - 1e-9) / 100;
+};
+
+// Loan moratoria declared by DepEd. During a moratorium no amortization is deducted, no additional
+// interest accrues, and the loan term is extended by the same number of months.
+// DepEd Memorandum dated 24 June 2026 (Sec. Angara): 3-month moratorium, 1 Jul – 30 Sep 2026,
+// for all teaching and non-teaching PF borrowers (State of National Energy Emergency, EO 110 s.2026).
+const PF_MORATORIA = [
+  { start: '2026-07-01', end: '2026-09-30', months: 3, reference: 'DepEd Memorandum dated June 24, 2026 – Three (3)-Month Moratorium on PF Loans' }
+];
+
+const monthIndex = (d) => d.getUTCFullYear() * 12 + d.getUTCMonth();
+
+// Months of moratorium that fall inside a loan's repayment window (the window grows as months are deferred).
+const moratoriumMonthsFor = (effectiveDate, months) => {
+  if (!effectiveDate || !months) return 0;
+  const eff = new Date(effectiveDate);
+  if (isNaN(eff)) return 0;
+  const start = monthIndex(eff);
+  let end = start + parseInt(months, 10) - 1;
+  let total = 0;
+  for (const m of PF_MORATORIA) {
+    const ms = monthIndex(new Date(m.start + 'T00:00:00Z'));
+    const me = monthIndex(new Date(m.end + 'T00:00:00Z'));
+    const overlap = Math.min(end, me) - Math.max(start, ms) + 1;
+    if (overlap > 0) { total += overlap; end += overlap; }
+  }
+  return total;
+};
+
+// Last deduction month = effective month + term − 1 + moratorium months; returned as that month's last day.
+const computeTerminationDate = (effectiveDate, months) => {
+  if (!effectiveDate || !months) return null;
+  const eff = new Date(effectiveDate);
+  if (isNaN(eff)) return null;
+  const last = monthIndex(eff) + parseInt(months, 10) - 1 + moratoriumMonthsFor(effectiveDate, months);
+  return new Date(Date.UTC(Math.floor(last / 12), (last % 12) + 1, 0));
 };
 
 const computeRenewalStatus = (loanAmount, outstandingBalance) => {
@@ -313,6 +348,7 @@ const createLoan = async (payload) => {
     monthly_amortization: monthlyAmortization,
     loan_application_date: payload.loan_application_date || new Date(),
     effective_date: payload.effective_date || new Date(),
+    termination_date: computeTerminationDate(payload.effective_date || new Date(), months),
     loan_balance: loanAmount,
     no_of_months_paid: 0,
     status: 'NOT QUALIFIED FOR RENEWAL',
@@ -438,6 +474,39 @@ const createLoanDirect = async (payload) => {
   });
 };
 
+// Annex A – report on PF borrowers covered by a moratorium (PF National Board of Trustees template).
+const getMoratoriumReport = async (index = PF_MORATORIA.length - 1) => {
+  const m = PF_MORATORIA[index];
+  const loans = await Loan.findAll();
+  const ms = monthIndex(new Date(m.start + 'T00:00:00Z'));
+  const me = monthIndex(new Date(m.end + 'T00:00:00Z'));
+  const affected = [];
+  for (const loan of loans) {
+    if (!loan.effective_date || Number(loan.loan_balance) <= 0) continue;
+    const start = monthIndex(new Date(loan.effective_date));
+    const naturalEnd = start + Number(loan.no_of_months) - 1;
+    const overlap = Math.min(naturalEnd, me) - Math.max(start, ms) + 1;
+    if (overlap <= 0) continue;
+    const deferredMonths = Math.min(overlap, m.months);
+    affected.push({
+      employee_number: loan.employee_number,
+      loan_id: loan.id,
+      monthly_amortization: Number(loan.monthly_amortization),
+      deferred_months: deferredMonths,
+      amount_deferred: round2(Number(loan.monthly_amortization) * deferredMonths)
+    });
+  }
+  return {
+    reference: m.reference,
+    name_of_calamity: 'State of National Energy Emergency (EO No. 110, s. 2026)',
+    date_occurred: '2026-03-24',
+    schedule_of_deferment: `${m.start} to ${m.end}`,
+    borrowers_affected: new Set(affected.map(a => a.employee_number)).size,
+    total_amortizations_deferred: round2(affected.reduce((sum, x) => sum + x.amount_deferred, 0)),
+    details: affected
+  };
+};
+
 const findLoanByEmployeeNumber = async (employee_number) => {
   return Loan.findOne({
     where: { employee_number },
@@ -475,11 +544,11 @@ const findEmployeesByName = async (firstName, lastName) => {
   const conditions = [];
 
   if (firstNameValue) {
-    conditions.push({ first_name: { [Op.like]: `%${firstNameValue}%` } });
-    conditions.push({ last_name: { [Op.like]: `%${firstNameValue}%` } });
+    conditions.push({ first_name: { [LIKE]: `%${firstNameValue}%` } });
+    conditions.push({ last_name: { [LIKE]: `%${firstNameValue}%` } });
   }
   if (lastNameValue) {
-    conditions.push({ last_name: { [Op.like]: `%${lastNameValue}%` } });
+    conditions.push({ last_name: { [LIKE]: `%${lastNameValue}%` } });
   }
 
   const where = conditions.length > 0 ? { [Op.or]: conditions } : {};
@@ -549,7 +618,7 @@ const getDashboardSummary = async () => {
   const totalEmployees = await Employee.count();
   const totalLoans = await Loan.count();
   const activeLoans = await Loan.count({ where: { status: { [Op.in]: ['active', 'QUALIFIED FOR RENEWAL', 'NOT QUALIFIED FOR RENEWAL', 'NOT QUALIFIED'] } } });
-  const fullyPaidLoans = await Loan.count({ where: { status: { [Op.like]: '%FULLY%' } } });
+  const fullyPaidLoans = await Loan.count({ where: { [Op.or]: [{ status: 'fully_paid' }, { status: { [LIKE]: '%fully%' } }] } });
   const totalLoanAmount = parseFloat((await Loan.sum('loan_amount')) || 0);
   const totalLoanBalance = parseFloat((await Loan.sum('loan_balance')) || 0);
   const totalAmortization = parseFloat((await Loan.sum('monthly_amortization')) || 0);
@@ -579,6 +648,10 @@ const getDashboardSummary = async () => {
 
 module.exports = {
   sequelize,
+  PF_MORATORIA,
+  computeTerminationDate,
+  moratoriumMonthsFor,
+  getMoratoriumReport,
   computeAmortization,
   computeRenewalStatus,
   PF_ANNUAL_RATE,

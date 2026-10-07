@@ -7,7 +7,7 @@ import { authAPI } from '../../lib/api';
 
 export default function AdminLogin() {
   const router = useRouter();
-  const [formData, setFormData] = useState({ username: 'admin', password: 'admin123' });
+  const [formData, setFormData] = useState({ username: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -61,7 +61,7 @@ export default function AdminLogin() {
       // Redirect to dashboard
       router.push('/admin/dashboard');
     } catch (err) {
-      setError(err.response?.data?.message || 'Login failed. Try admin/admin123');
+      setError(err.response?.data?.message || 'Login failed. Check your username and password.');
     } finally {
       setLoading(false);
     }
@@ -184,13 +184,6 @@ export default function AdminLogin() {
               </button>
             </form>
 
-            {/* Demo Hint */}
-            <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 text-center">
-              <p className="text-slate-400 text-xs mb-2">Demo Credentials</p>
-              <p className="text-slate-300 text-sm font-mono">
-                <span className="text-purple-400">admin</span> / <span className="text-cyan-400">admin123</span>
-              </p>
-            </div>
           </div>
         </div>
 

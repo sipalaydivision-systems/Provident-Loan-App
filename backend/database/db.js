@@ -27,6 +27,35 @@ const sequelize = connectionString
       }
     );
 
+
+// ==================== DepEd Provident Fund loan rules ====================
+// DO 52 s.2017 / DO 37 s.2018 / DO 3 & 8 s.2022: 6% per annum, diminishing balance,
+// equal monthly amortization, 12–60 months. Renewal when >= 30% of principal is paid.
+const PF_ANNUAL_RATE = 6;
+const PF_RENEWAL_THRESHOLD = 0.30;
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+
+const computeAmortization = (principal, months, annualRate = PF_ANNUAL_RATE) => {
+  const P = Number(principal);
+  const n = parseInt(months, 10);
+  const r = Number(annualRate) / 100 / 12;
+  if (!P || !n) return 0;
+  if (!r) return round2(P / n);
+  // DepEd PF amortization tables round UP to the next centavo (e.g. P100,000 x 60 mos = P1,933.29).
+  const exact = (P * r) / (1 - Math.pow(1 + r, -n));
+  return Math.ceil(exact * 100 - 1e-9) / 100;
+};
+
+const computeRenewalStatus = (loanAmount, outstandingBalance) => {
+  const P = Number(loanAmount) || 0;
+  const bal = Number(outstandingBalance) || 0;
+  if (P <= 0) return 'active';
+  if (bal <= 0.5) return 'fully_paid';
+  return (P - bal) / P >= PF_RENEWAL_THRESHOLD
+    ? 'QUALIFIED FOR RENEWAL'
+    : 'NOT QUALIFIED FOR RENEWAL';
+};
+
 const Admin = sequelize.define(
   'Admin',
   {
@@ -154,6 +183,27 @@ const initializeDatabase = async () => {
 
 const ensureSeedData = async () => {
   const admin = await Admin.findOne({ where: { username: 'admin' } });
+  const envPassword = process.env.ADMIN_PASSWORD;
+  if (admin && envPassword) {
+    // Keep the admin password in sync with the ADMIN_PASSWORD variable (removes the demo password).
+    const bcryptjs = require('bcryptjs');
+    const same = await bcryptjs.compare(envPassword, admin.password_hash);
+    if (!same) await admin.update({ password_hash: await bcryptjs.hash(envPassword, 10) });
+    return;
+  }
+  if (!admin && envPassword) {
+    const bcryptjs = require('bcryptjs');
+    await Admin.create({
+      username: 'admin',
+      email: 'admin@company.com',
+      password_hash: await bcryptjs.hash(envPassword, 10),
+      first_name: 'System',
+      last_name: 'Administrator',
+      role: 'super_admin',
+      is_active: true
+    });
+    return;
+  }
   if (!admin) {
     await Admin.create({
       username: 'admin',
@@ -253,7 +303,8 @@ const createLoan = async (payload) => {
 
   const loanAmount = parseFloat(payload.loan_amount);
   const months = parseInt(payload.no_of_months, 10);
-  const monthlyAmortization = parseFloat((loanAmount / months).toFixed(2));
+  const annualRate = PF_ANNUAL_RATE;
+  const monthlyAmortization = computeAmortization(loanAmount, months, annualRate);
 
   return Loan.create({
     employee_number: payload.employee_number,
@@ -264,8 +315,8 @@ const createLoan = async (payload) => {
     effective_date: payload.effective_date || new Date(),
     loan_balance: loanAmount,
     no_of_months_paid: 0,
-    status: 'active',
-    interest_rate: parseFloat(payload.interest_rate) || 0,
+    status: 'NOT QUALIFIED FOR RENEWAL',
+    interest_rate: annualRate,
     reason: payload.reason || 'Personal needs',
     approved_by: payload.approved_by || 'System Admin',
     remarks: payload.remarks || null
@@ -315,14 +366,18 @@ const recordPayment = async ({ employee_number, loan_id, amount_paid, payment_da
     throw new Error('Loan not found');
   }
 
-  const payment = parseFloat(amount_paid);
-  const previousBalance = parseFloat(loan.loan_balance);
-  const newBalance = Math.max(0, previousBalance - payment);
+  const payment = round2(parseFloat(amount_paid));
+  const previousBalance = round2(parseFloat(loan.loan_balance));
+  // Diminishing balance: interest is charged on the outstanding principal only.
+  const monthlyRate = (Number(loan.interest_rate) || PF_ANNUAL_RATE) / 100 / 12;
+  const interest = round2(previousBalance * monthlyRate);
+  const principalPaid = round2(Math.min(previousBalance, payment - interest));
+  const newBalance = round2(Math.max(0, previousBalance - principalPaid));
   const paidMonths = loan.no_of_months_paid + 1;
   const updatedLoan = await loan.update({
     loan_balance: newBalance,
     no_of_months_paid: paidMonths,
-    status: newBalance <= 0 ? 'fully_paid' : loan.status,
+    status: computeRenewalStatus(loan.loan_amount, newBalance),
     termination_date: newBalance <= 0 ? new Date() : loan.termination_date
   });
 
@@ -338,8 +393,8 @@ const recordPayment = async ({ employee_number, loan_id, amount_paid, payment_da
     notes: notes || '',
     payment_month: payment_date ? new Date(payment_date).getMonth() + 1 : null,
     date_of_deduction: payment_date ? new Date(payment_date) : null,
-    payment_with_interest: null,
-    principal_payments: null,
+    payment_with_interest: interest,
+    principal_payments: principalPaid,
     paid_status: true,
     monthly_payment_amount: payment,
     paid_months: paidMonths,
@@ -352,23 +407,34 @@ const recordPayment = async ({ employee_number, loan_id, amount_paid, payment_da
 // Direct loan insert that preserves all values from an import (no recalculation)
 const createLoanDirect = async (payload) => {
   const loanAmount = parseFloat(payload.loan_amount) || 0;
+  const parsedBalance = parseFloat(payload.loan_balance);
+  const importedBalance = Number.isFinite(parsedBalance) ? parsedBalance : loanAmount;
+  // Renewal status is recomputed from the 30% rule; the sheet's own label is kept in remarks for audit.
+  const computedStatus = computeRenewalStatus(loanAmount, importedBalance);
+  const sheetStatus = (payload.status || '').toString().trim();
+  const remarkParts = [payload.remarks || null];
+  if (sheetStatus && sheetStatus.toUpperCase() !== computedStatus.toUpperCase()) {
+    remarkParts.push(`Sheet status: ${sheetStatus}`);
+  }
+  if (importedBalance < 0) remarkParts.push('Negative balance in source (possible over-deduction)');
+  const importRemarks = remarkParts.filter(Boolean).join(' | ') || null;
   return Loan.create({
     employee_number: payload.employee_number,
     loan_amount: loanAmount,
     no_of_months: parseInt(payload.no_of_months) || 0,
-    monthly_amortization: parseFloat(payload.monthly_amortization) || parseFloat((loanAmount / (parseInt(payload.no_of_months) || 1)).toFixed(2)),
+    monthly_amortization: parseFloat(payload.monthly_amortization) || computeAmortization(loanAmount, payload.no_of_months),
     loan_application_date: payload.loan_application_date || null,
     check_number: payload.check_number || null,
     check_date: payload.check_date || null,
     effective_date: payload.effective_date || null,
     termination_date: payload.termination_date || null,
-    loan_balance: parseFloat(payload.loan_balance) ?? loanAmount,
+    loan_balance: importedBalance,
     no_of_months_paid: parseInt(payload.no_of_months_paid) || 0,
-    status: payload.status || 'active',
-    remarks: payload.remarks || null,
+    status: computedStatus,
+    remarks: importRemarks,
     reason: 'Imported from summary',
     approved_by: 'Import',
-    interest_rate: 0,
+    interest_rate: PF_ANNUAL_RATE,
   });
 };
 
@@ -482,7 +548,7 @@ const bulkDeleteLedgerEntries = async (ids) => {
 const getDashboardSummary = async () => {
   const totalEmployees = await Employee.count();
   const totalLoans = await Loan.count();
-  const activeLoans = await Loan.count({ where: { status: { [Op.in]: ['active', 'QUALIFIED FOR RENEWAL', 'NOT QUALIFIED'] } } });
+  const activeLoans = await Loan.count({ where: { status: { [Op.in]: ['active', 'QUALIFIED FOR RENEWAL', 'NOT QUALIFIED FOR RENEWAL', 'NOT QUALIFIED'] } } });
   const fullyPaidLoans = await Loan.count({ where: { status: { [Op.like]: '%FULLY%' } } });
   const totalLoanAmount = parseFloat((await Loan.sum('loan_amount')) || 0);
   const totalLoanBalance = parseFloat((await Loan.sum('loan_balance')) || 0);
@@ -513,6 +579,9 @@ const getDashboardSummary = async () => {
 
 module.exports = {
   sequelize,
+  computeAmortization,
+  computeRenewalStatus,
+  PF_ANNUAL_RATE,
   initializeDatabase,
   findAdmin,
   logAudit,

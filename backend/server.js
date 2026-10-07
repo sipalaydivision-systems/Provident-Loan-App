@@ -14,6 +14,8 @@ const adminRoutes = require('./routes/admin.routes');
 const employeeRoutes = require('./routes/employee.routes');
 
 const app = express();
+// Railway terminates TLS at its proxy; trust it so rate limiting sees real client IPs.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // ==================== Middleware ====================

@@ -57,10 +57,10 @@ export const authAPI = {
 // Employee endpoints (public)
 export const employeeAPI = {
   search: (searchData) => api.post('/employee/search', searchData),
-  lookup: (employeeNumber) => api.get(`/employee/lookup/${employeeNumber}`),
+  lookup: (employeeNumber, lastName) => api.get(`/employee/lookup/${encodeURIComponent(employeeNumber)}`, { params: { last_name: lastName } }),
   searchByName: (nameData) => api.post('/employee/search-by-name', nameData),
-  getLedger: (employeeNumber) => api.get(`/employee/ledger/${employeeNumber}`),
-  getStatement: (employeeNumber) => api.get(`/employee/statement/${employeeNumber}`),
+  getLedger: (employeeNumber, lastName) => api.get(`/employee/ledger/${encodeURIComponent(employeeNumber)}`, { params: { last_name: lastName } }),
+  getStatement: (employeeNumber, lastName) => api.get(`/employee/statement/${encodeURIComponent(employeeNumber)}`, { params: { last_name: lastName } }),
   help: () => api.get('/employee/help'),
   contact: () => api.get('/employee/contact'),
 };

@@ -787,7 +787,7 @@ exports.createLoan = async (req, res) => {
       employee_number,
       loan_amount,
       no_of_months,
-      interest_rate = 2.0,
+      loan_type = 'multi_purpose',
       effective_date,
       reason,
       approved_by
@@ -799,6 +799,18 @@ exports.createLoan = async (req, res) => {
         error: 'Missing required fields: employee_number, loan_amount, no_of_months'
       });
     }
+
+    // DepEd PF limits: term 12–60 months; Multi-Purpose max P100,000; Additional (extreme cases) max P200,000.
+    const amt = parseFloat(loan_amount);
+    const months = parseInt(no_of_months, 10);
+    const maxAmount = loan_type === 'additional' ? 200000 : 100000;
+    if (!(months >= 12 && months <= 60)) {
+      return res.status(400).json({ success: false, error: 'Loan term must be 12 to 60 months' });
+    }
+    if (!(amt > 0 && amt <= maxAmount)) {
+      return res.status(400).json({ success: false, error: `Loan amount must be between 1 and ${maxAmount.toLocaleString()}` });
+    }
+    const interest_rate = db.PF_ANNUAL_RATE;
 
     const newLoan = await db.createLoan({
       employee_number,
@@ -1183,8 +1195,18 @@ exports.importEmployees = async (req, res) => {
             remarks:              row.remarks  || null,
             reason:               'Imported from Provident Fund Summary',
             approved_by:          'Import',
-            interest_rate:        0,
+            interest_rate:        db.PF_ANNUAL_RATE,
           };
+          // Recompute renewal status from the 30%-of-principal rule; keep the sheet's label in remarks.
+          {
+            const computed = db.computeRenewalStatus(loanPayload.loan_amount, loanPayload.loan_balance);
+            const sheetStatus = (row.status || '').toString().trim();
+            const notes = [loanPayload.remarks];
+            if (sheetStatus && sheetStatus.toUpperCase() !== computed.toUpperCase()) notes.push(`Sheet status: ${sheetStatus}`);
+            if (Number(loanPayload.loan_balance) < 0) notes.push('Negative balance in source (possible over-deduction)');
+            loanPayload.status = computed;
+            loanPayload.remarks = notes.filter(Boolean).join(' | ') || null;
+          }
 
           const existingLoan = await db.findLoanByEmployeeNumber(empNum);
           let loan;

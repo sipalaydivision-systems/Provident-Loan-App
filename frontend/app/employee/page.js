@@ -24,25 +24,10 @@ export default function EmployeePortal() {
 
     try {
       let response;
-      if (searchType === 'number') {
-        response = await employeeAPI.lookup(formData.employee_number);
-        // Normalize lookup response to match expected shape: { data: { employee, loan, recentPayments } }
-        if (response.data && !response.data.data) {
-          response = { data: { data: { employee: response.data.employee, loan: response.data.loan, recentPayments: response.data.recentPayments } } };
-        }
-      } else {
-        response = await employeeAPI.searchByName({
-          first_name: formData.first_name,
-          last_name: formData.last_name
-        });
-        // If multiple matches returned, pick the first and fetch full detail
-        if (response.data?.matches?.length > 0) {
-          const match = response.data.matches[0];
-          const detail = await employeeAPI.lookup(match.employee_number);
-          response = { data: { data: { employee: detail.data.employee, loan: detail.data.loan, recentPayments: detail.data.recentPayments } } };
-        } else if (response.data && !response.data.data) {
-          response = { data: { data: { employee: response.data.employee, loan: response.data.loan, recentPayments: response.data.recentPayments } } };
-        }
+      response = await employeeAPI.lookup(formData.employee_number.trim(), formData.last_name.trim());
+      // Normalize lookup response to match expected shape: { data: { employee, loan, recentPayments } }
+      if (response.data && !response.data.data) {
+        response = { data: { data: { employee: response.data.employee, loan: response.data.loan, recentPayments: response.data.recentPayments } } };
       }
       setResult(response.data);
     } catch (err) {
@@ -78,36 +63,6 @@ export default function EmployeePortal() {
           <h2 className="text-3xl font-bold text-white mb-2">Search Your Loan</h2>
           <p className="text-slate-400 mb-8">Enter your employee information to view your provident loan details</p>
 
-          {/* Search Type Toggle */}
-          <div className="flex gap-3 mb-8">
-            <button
-              onClick={() => {
-                setSearchType('number');
-                setFormData({ employee_number: '', first_name: '', last_name: '' });
-              }}
-              className={`px-5 py-2.5 rounded-lg font-semibold transition-all duration-200 ${
-                searchType === 'number'
-                  ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/25'
-                  : 'bg-slate-800/50 text-slate-300 border border-slate-700 hover:border-slate-600'
-              }`}
-            >
-              Employee Number
-            </button>
-            <button
-              onClick={() => {
-                setSearchType('name');
-                setFormData({ employee_number: '', first_name: '', last_name: '' });
-              }}
-              className={`px-5 py-2.5 rounded-lg font-semibold transition-all duration-200 ${
-                searchType === 'name'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-500/25'
-                  : 'bg-slate-800/50 text-slate-300 border border-slate-700 hover:border-slate-600'
-              }`}
-            >
-              Name
-            </button>
-          </div>
-
           <form onSubmit={handleSearch} className="space-y-6">
             {searchType === 'number' ? (
               <div className="space-y-2">
@@ -126,6 +81,22 @@ export default function EmployeePortal() {
                     required
                   />
                 </div>
+              </div>
+            ) : null}
+            {searchType === 'number' ? (
+              <div className="space-y-2">
+                <label className="block text-sm font-semibold text-slate-200">
+                  Last Name
+                </label>
+                <input
+                  type="text"
+                  name="last_name"
+                  value={formData.last_name}
+                  onChange={handleInputChange}
+                  placeholder="As written in your service record"
+                  className="relative w-full px-4 py-3 bg-slate-800/50 border border-slate-600 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-purple-500 transition-colors duration-200"
+                  required
+                />
               </div>
             ) : (
               <div className="grid md:grid-cols-2 gap-4">
